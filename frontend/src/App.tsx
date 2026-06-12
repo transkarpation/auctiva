@@ -82,7 +82,7 @@ function SignedOutLanding() {
     <Center mih="100vh">
       <Card withBorder radius="md" padding="xl" w={380}>
         <Stack align="center">
-          <Title order={2}>Portal</Title>
+          <Title order={2}>Auctiva</Title>
           <Text c="dimmed" ta="center" size="sm">
             Sign in to your account or create a new one to continue.
           </Text>
@@ -130,7 +130,7 @@ function Dashboard() {
         <Group h="100%" px="md" justify="space-between">
           <Group gap="sm">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Title order={3}>Portal</Title>
+            <Title order={3}>Auctiva</Title>
           </Group>
           <Group gap="sm">
             <RealtimeMenu />

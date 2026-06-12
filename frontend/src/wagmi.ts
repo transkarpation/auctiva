@@ -9,7 +9,7 @@ const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
 // automatically in addition to the ones declared here.
 const connectors = [
   injected(),
-  coinbaseWallet({ appName: 'Portal' }),
+  coinbaseWallet({ appName: 'Auctiva' }),
   // WalletConnect adds hundreds of mobile/desktop wallets via QR, but needs a
   // project id (https://cloud.reown.com). Only enabled when configured.
   ...(walletConnectProjectId

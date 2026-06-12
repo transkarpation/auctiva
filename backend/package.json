@@ -1,7 +1,7 @@
 {
-  "name": "crm-fa-backend",
+  "name": "auctiva-backend",
   "version": "1.0.0",
-  "description": "CRM backend API",
+  "description": "Auctiva backend API",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
