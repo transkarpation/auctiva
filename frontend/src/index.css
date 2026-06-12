@@ -1,0 +1,7 @@
+/* Mantine provides base styles via @mantine/core/styles.css (imported in App.tsx). */
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100vh;
+}

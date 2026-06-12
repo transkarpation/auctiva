@@ -1,0 +1,38 @@
+{
+  "name": "crm-fa-backend",
+  "version": "1.0.0",
+  "description": "CRM backend API",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "worker": "tsx watch src/worker.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "typecheck": "tsc --noEmit",
+    "create-wallet": "tsx scripts/create-wallet.ts",
+    "backfill-users": "tsx scripts/backfill-users.ts"
+  },
+  "dependencies": {
+    "@clerk/express": "^2.1.25",
+    "bullmq": "^5.78.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "ioredis": "^5.11.1",
+    "mongoose": "^8.5.0",
+    "morgan": "^1.11.0",
+    "svix": "^1.95.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^20.14.0",
+    "ethers": "^6.16.0",
+    "solc": "^0.8.35",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,83 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: crm-fa-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-secret}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-crm}
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-express:
+    image: mongo-express:1
+    container_name: crm-fa-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USERNAME:-admin}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:-secret}
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-secret}@mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: ${ME_USERNAME:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${ME_PASSWORD:-secret}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm-fa-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  centrifugo:
+    image: centrifugo/centrifugo:v6
+    container_name: crm-fa-centrifugo
+    restart: unless-stopped
+    command: centrifugo
+    ports:
+      - "8000:8000"
+    environment:
+      CENTRIFUGO_ADMIN_ENABLED: "true"
+      CENTRIFUGO_ADMIN_PASSWORD: ${CENTRIFUGO_ADMIN_PASSWORD:-secret}
+      CENTRIFUGO_ADMIN_SECRET: ${CENTRIFUGO_ADMIN_SECRET:-secret}
+      CENTRIFUGO_HTTP_API_KEY: ${CENTRIFUGO_API_KEY:-secret}
+      CENTRIFUGO_CLIENT_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_TOKEN_HMAC_SECRET:-secret}
+      CENTRIFUGO_ENGINE_TYPE: redis
+      CENTRIFUGO_ENGINE_REDIS_ADDRESS: redis://redis:6379
+      # Browser WebSocket connections are origin-checked. List the frontend
+      # origin(s); override CENTRIFUGO_ALLOWED_ORIGINS for staging/production.
+      CENTRIFUGO_CLIENT_ALLOWED_ORIGINS: ${CENTRIFUGO_ALLOWED_ORIGINS:-http://localhost:5173}
+      # Personal per-user channels: "personal:#<userId>". allow_user_limited_channels
+      # restricts each "#"-suffixed channel to that single user, so a signed-in
+      # client may only subscribe to its own. The server publishes via the HTTP API.
+      CENTRIFUGO_CHANNEL_NAMESPACES: >-
+        [{"name":"personal","allow_subscribe_for_client":true,"allow_user_limited_channels":true,"presence":true,"history_size":20,"history_ttl":"300s"}]
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  mongodb_data:
+  redis_data:
