@@ -4,7 +4,7 @@ import { AuctionModel } from "../models/Auction.js";
 import { resolveOwnerNames } from "../lib/owners.js";
 import { parse } from "../lib/validate.js";
 import { userIdOf } from "../lib/http.js";
-import { chainEnabled, deploySimpleAuction } from "../lib/auctionContract.js";
+import { deploySimpleAuction } from "../lib/auctionContract.js";
 import { queueEnabled, enqueueDeploy } from "../queue/deployQueue.js";
 
 const DEFAULT_BIDDING_SECONDS = 7 * 24 * 60 * 60; // 7 days
@@ -69,17 +69,6 @@ export async function createAuction(req: Request, res: Response): Promise<void> 
   const data = parse(createAuctionSchema, req.body, res);
   if (!data) return;
   const userId = userIdOf(req);
-
-  // Off-chain: no deployment.
-  if (!chainEnabled()) {
-    const auction = await AuctionModel.create({
-      userId,
-      ...data,
-      deploymentStatus: "none",
-    });
-    res.status(201).json(auction);
-    return;
-  }
 
   const biddingTimeSeconds = data.endsAt
     ? Math.max(

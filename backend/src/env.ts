@@ -21,13 +21,13 @@ const envSchema = z.object({
   CLERK_SECRET_KEY: z.string().default(""),
   CLERK_WEBHOOK_SIGNING_SECRET: z.string().default(""),
 
-  // App-owned wallet (optional; validated when present).
-  INTERNAL_WALLET_ADDRESS: ethAddress.optional(),
-  INTERNAL_WALLET_PRIVATE: ethPrivateKey.optional(),
+  // App-owned wallet.
+  INTERNAL_WALLET_ADDRESS: ethAddress,
+  INTERNAL_WALLET_PRIVATE: ethPrivateKey,
 
-  // Base Sepolia RPC endpoints (optional; validated as URLs when present).
-  BASE_SEPOLIA_HTTP: z.url().optional(),
-  BASE_SEPOLIA_WSS: z.url().optional(),
+  // Base Sepolia RPC endpoints.
+  BASE_SEPOLIA_HTTP: z.url(),
+  BASE_SEPOLIA_WSS: z.url(),
 
   // Redis connection for the BullMQ deploy queue (optional). When unset, the
   // contract deploy runs synchronously inside the request instead.

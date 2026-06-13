@@ -4,11 +4,6 @@ import { SimpleAuctionArtifact } from "../SimpleAuction.js";
 
 const { abi, bytecode } = SimpleAuctionArtifact;
 
-// Deployment needs both an RPC endpoint and a funded deployer key.
-export function chainEnabled(): boolean {
-  return Boolean(env.baseSepoliaHttp && env.internalWalletPrivate);
-}
-
 export type DeployResult = {
   contractAddress: string;
   deploymentTxHash: string;
@@ -22,12 +17,6 @@ export async function deploySimpleAuction(params: {
   beneficiary: string;
   minBidIncrementWei: string;
 }): Promise<DeployResult> {
-  if (!env.baseSepoliaHttp || !env.internalWalletPrivate) {
-    throw new Error(
-      "Chain is not configured (BASE_SEPOLIA_HTTP and INTERNAL_WALLET_PRIVATE)"
-    );
-  }
-
   const provider = new JsonRpcProvider(env.baseSepoliaHttp);
   const wallet = new Wallet(env.internalWalletPrivate, provider);
   const factory = new ContractFactory([...abi], bytecode, wallet);
