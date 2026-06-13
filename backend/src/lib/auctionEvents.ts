@@ -3,7 +3,7 @@ import { publishToUser } from "./centrifugo.js";
 type AuctionUpdate = {
   userId: string;
   auctionId: string;
-  deploymentStatus: "none" | "pending" | "deployed" | "failed";
+  deploymentStatus: "pending" | "deployed" | "failed";
   title?: string;
   contractAddress?: string | null;
   deploymentTxHash?: string | null;

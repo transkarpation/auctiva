@@ -31,15 +31,15 @@ const auctionSchema = new Schema(
     isPublic: { type: Boolean, default: false, index: true },
     // Optional close time.
     endsAt: { type: Date },
-    // On-chain deployment (Base Sepolia). Absent if chain is not configured.
+    // On-chain deployment (Base Sepolia). Absent until deployment succeeds.
     contractAddress: { type: String },
     deploymentTxHash: { type: String },
     chain: { type: String },
-    // none = off-chain; pending = queued; deployed/failed = terminal.
+    // pending = queued; deployed/failed = terminal.
     deploymentStatus: {
       type: String,
-      enum: ["none", "pending", "deployed", "failed"],
-      default: "none",
+      enum: ["pending", "deployed", "failed"],
+      default: "pending",
     },
   },
   { timestamps: true }
