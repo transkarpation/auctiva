@@ -2,12 +2,12 @@ import express, { Router } from "express";
 import { clerkMiddleware } from "@clerk/express";
 import { env } from "../env.js";
 import { requireUser } from "../middleware/requireUser.js";
-import { healthRouter } from "./health.js";
-import { groupsRouter } from "./groups.js";
-import { todosRouter } from "./todos.js";
-import { auctionsRouter } from "./auctions.js";
-import { realtimeRouter } from "./realtime.js";
-import { webhooksRouter } from "./webhooks.js";
+import { healthRouter } from "./health.router.js";
+import { groupsRouter } from "./groups.router.js";
+import { todosRouter } from "./todos.router.js";
+import { auctionsRouter } from "./auctions.router.js";
+import { realtimeRouter } from "./realtime.router.js";
+import { webhooksRouter } from "./webhooks.router.js";
 
 // Single entry point for the API: owns body parsing, auth, and all route mounts
 // so app.ts only deals with app-level concerns (cors, logging, error handling).
