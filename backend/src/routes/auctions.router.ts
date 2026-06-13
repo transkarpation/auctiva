@@ -5,6 +5,7 @@ import {
   listAuctions,
   createAuction,
   deleteAuction,
+  confirmBid,
 } from "../controllers/auctions.controller.js";
 
 export const auctionsRouter = Router();
@@ -13,4 +14,5 @@ export const auctionsRouter = Router();
 auctionsRouter.get("/public", asyncHandler(listPublicAuctions));
 auctionsRouter.get("/", asyncHandler(listAuctions));
 auctionsRouter.post("/", asyncHandler(createAuction));
+auctionsRouter.post("/:id/bids/confirm", asyncHandler(confirmBid));
 auctionsRouter.delete("/:id", asyncHandler(deleteAuction));

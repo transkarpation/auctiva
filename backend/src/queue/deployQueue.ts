@@ -4,6 +4,10 @@ import { env } from "../env.js";
 import { AuctionModel } from "../models/Auction.js";
 import { deploySimpleAuction } from "../lib/auctionContract.js";
 import { publishAuctionUpdate } from "../lib/auctionEvents.js";
+import { logger } from "../lib/logger.js";
+
+// Child logger so every line from the worker is tagged with its component.
+const log = logger.child({ component: "deploy-worker" });
 
 export type DeployJobData = {
   auctionId: string;
@@ -65,7 +69,7 @@ export function startDeployWorker(): Worker<DeployJobData> | null {
         {
           contractAddress: result.contractAddress,
           deploymentTxHash: result.deploymentTxHash,
-          chain: "base-sepolia",
+          chain: env.bcName,
           deploymentStatus: "deployed",
         },
         { new: true }
@@ -82,16 +86,19 @@ export function startDeployWorker(): Worker<DeployJobData> | null {
           contractAddress: auction.contractAddress,
           deploymentTxHash: auction.deploymentTxHash,
         }).catch((e) =>
-          console.error("Failed to publish auction deployed event:", e)
+          log.error({ err: e, auctionId: auction.id }, "Failed to publish auction deployed event")
         );
       }
     },
     { connection: newConnection() }
   );
 
-  worker.on("ready", () => console.log("Auction deploy worker ready"));
+  worker.on("ready", () => log.info("Auction deploy worker ready"));
   worker.on("failed", (job, err) => {
-    console.error(`Deploy job ${job?.id} failed:`, err.message);
+    log.error(
+      { err, jobId: job?.id, auctionId: job?.data.auctionId, attemptsMade: job?.attemptsMade },
+      "Deploy job failed"
+    );
     // Mark the auction failed only once retries are exhausted, then notify the
     // owner so their UI can leave the "pending" state.
     if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
@@ -109,7 +116,9 @@ export function startDeployWorker(): Worker<DeployJobData> | null {
             title: auction.title,
           });
         })
-        .catch((e) => console.error("Failed to mark/publish auction failed:", e));
+        .catch((e) =>
+          log.error({ err: e, auctionId: job.data.auctionId }, "Failed to mark/publish auction failed")
+        );
     }
   });
 

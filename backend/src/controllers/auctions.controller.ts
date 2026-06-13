@@ -1,10 +1,16 @@
 import { type Request, type Response } from "express";
 import { z } from "zod";
 import { AuctionModel } from "../models/Auction.js";
+import { BidModel } from "../models/Bid.js";
 import { resolveOwnerNames } from "../lib/owners.js";
 import { parse } from "../lib/validate.js";
+import { env } from "../env.js";
 import { userIdOf } from "../lib/http.js";
-import { deploySimpleAuction } from "../lib/auctionContract.js";
+import {
+  deploySimpleAuction,
+  getAuctionOnChainState,
+  confirmBidTransaction,
+} from "../lib/auctionContract.js";
 import { queueEnabled, enqueueDeploy } from "../queue/deployQueue.js";
 
 const DEFAULT_BIDDING_SECONDS = 7 * 24 * 60 * 60; // 7 days
@@ -72,61 +78,164 @@ export async function createAuction(req: Request, res: Response): Promise<void> 
 
   const biddingTimeSeconds = data.endsAt
     ? Math.max(
-        MIN_BIDDING_SECONDS,
-        Math.floor((data.endsAt.getTime() - Date.now()) / 1000)
-      )
+      MIN_BIDDING_SECONDS,
+      Math.floor((data.endsAt.getTime() - Date.now()) / 1000)
+    )
     : DEFAULT_BIDDING_SECONDS;
 
-  // Preferred path: create as "pending" and deploy asynchronously via BullMQ.
-  if (queueEnabled()) {
-    const auction = await AuctionModel.create({
-      userId,
-      ...data,
-      chain: "base-sepolia",
-      deploymentStatus: "pending",
-    });
-    await enqueueDeploy({
-      auctionId: auction.id,
-      startingPriceWei: data.startingPrice,
-      biddingTimeSeconds,
-      beneficiary: data.walletAddress,
-      minBidIncrementWei: data.minBidIncrement,
-    });
-    res.status(201).json(auction);
-    return;
-  }
-
-  // Fallback (no Redis): deploy synchronously within the request.
-  try {
-    const result = await deploySimpleAuction({
-      startingPriceWei: data.startingPrice,
-      biddingTimeSeconds,
-      beneficiary: data.walletAddress,
-      minBidIncrementWei: data.minBidIncrement,
-    });
-    const auction = await AuctionModel.create({
-      userId,
-      ...data,
-      ...result,
-      chain: "base-sepolia",
-      deploymentStatus: "deployed",
-    });
-    res.status(201).json(auction);
-  } catch (err) {
-    console.error("Auction contract deployment failed:", err);
-    res.status(502).json({ error: "Failed to deploy auction contract" });
-  }
+  const auction = await AuctionModel.create({
+    userId,
+    ...data,
+    chain: env.bcName,
+    deploymentStatus: "pending",
+  });
+  await enqueueDeploy({
+    auctionId: auction.id,
+    startingPriceWei: data.startingPrice,
+    biddingTimeSeconds,
+    beneficiary: data.walletAddress,
+    minBidIncrementWei: data.minBidIncrement,
+  });
+  res.status(201).json(auction);
+  return
 }
 
-// Delete one of the user's auctions.
+// Delete one of the user's auctions. A deployed auction can only be removed once
+// its on-chain auction has ended AND received no bids — deleting one with bids
+// would hide a contract still holding bidders' funds, and deleting a live one
+// removes it mid-auction. A "failed" auction never made it on-chain (no bids, no
+// contract) so it's always safe to delete; a "pending" one may still be
+// mid-deploy and is blocked until it resolves.
 export async function deleteAuction(req: Request, res: Response): Promise<void> {
-  const result = await AuctionModel.findOneAndDelete({
+  const auction = await AuctionModel.findOne({
     _id: req.params.id,
     userId: userIdOf(req),
   });
-  if (!result) {
+  if (!auction) {
     res.status(404).json({ error: "Not found" });
     return;
   }
+
+  if (auction.deploymentStatus === "pending") {
+    res
+      .status(409)
+      .json({ error: "Auction is still being deployed and cannot be deleted yet" });
+    return;
+  }
+
+  if (auction.deploymentStatus === "deployed") {
+    if (!auction.contractAddress) {
+      res.status(409).json({ error: "Auction has no on-chain contract to verify" });
+      return;
+    }
+
+    let state;
+    try {
+      state = await getAuctionOnChainState(auction.contractAddress);
+    } catch (err) {
+      console.error("Failed to read auction on-chain state:", err);
+      res.status(502).json({ error: "Could not verify auction state on-chain" });
+      return;
+    }
+
+    if (!state.ended) {
+      res
+        .status(409)
+        .json({ error: "Auction is still running and cannot be deleted before it ends" });
+      return;
+    }
+    if (state.hasBids) {
+      res
+        .status(409)
+        .json({ error: "Auctions that received bids cannot be deleted" });
+      return;
+    }
+  }
+
+  await auction.deleteOne();
   res.status(204).end();
+}
+
+const confirmBidSchema = z.object({
+  transactionHash: z
+    .string({ error: "transactionHash is required" })
+    .regex(/^0x[a-fA-F0-9]{64}$/, "transactionHash must be a 0x-prefixed 32-byte hash"),
+});
+
+// Confirms a bid that the user placed on-chain directly from their wallet. The
+// client submits the bid transaction, then posts its hash here. The backend
+// verifies on-chain that the transaction succeeded, was sent to this auction's
+// contract, and actually placed a bid (via the HighestBidIncreased event), then
+// records it. Idempotent: re-confirming the same transaction returns the stored
+// bid rather than creating a duplicate.
+export async function confirmBid(req: Request, res: Response): Promise<void> {
+  const data = parse(confirmBidSchema, req.body, res);
+  if (!data) return;
+  const transactionHash = data.transactionHash.toLowerCase();
+
+  const auction = await AuctionModel.findById(req.params.id);
+  if (!auction) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (auction.deploymentStatus !== "deployed" || !auction.contractAddress) {
+    res.status(409).json({ error: "Auction is not deployed on-chain" });
+    return;
+  }
+
+  // Already recorded — return it without re-reading the chain.
+  const existing = await BidModel.findOne({ transactionHash });
+  if (existing) {
+    res.status(200).json(existing);
+    return;
+  }
+
+  let result;
+  try {
+    result = await confirmBidTransaction(transactionHash, auction.contractAddress);
+  } catch (err) {
+    console.error("Failed to verify bid transaction on-chain:", err);
+    res.status(502).json({ error: "Could not verify transaction on-chain" });
+    return;
+  }
+
+  switch (result.status) {
+    case "not_found":
+      res.status(404).json({ error: "Transaction not found or not yet mined" });
+      return;
+    case "reverted":
+      res.status(400).json({ error: "Transaction reverted on-chain" });
+      return;
+    case "wrong_contract":
+      res
+        .status(400)
+        .json({ error: "Transaction was not sent to this auction's contract" });
+      return;
+    case "no_bid_event":
+      res
+        .status(400)
+        .json({ error: "Transaction did not place a bid on this auction" });
+      return;
+  }
+
+  try {
+    const bid = await BidModel.create({
+      auctionId: auction.id,
+      userId: userIdOf(req),
+      contractAddress: auction.contractAddress,
+      bidder: result.bidder.toLowerCase(),
+      amount: result.amountWei,
+      transactionHash,
+      blockNumber: result.blockNumber,
+    });
+    res.status(201).json(bid);
+  } catch (err) {
+    // Unique-index race: a concurrent request recorded the same tx first.
+    if ((err as { code?: number }).code === 11000) {
+      const bid = await BidModel.findOne({ transactionHash });
+      res.status(200).json(bid);
+      return;
+    }
+    throw err;
+  }
 }

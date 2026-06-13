@@ -25,9 +25,10 @@ const envSchema = z.object({
   INTERNAL_WALLET_ADDRESS: ethAddress,
   INTERNAL_WALLET_PRIVATE: ethPrivateKey,
 
-  // Base Sepolia RPC endpoints.
-  BASE_SEPOLIA_HTTP: z.url(),
-  BASE_SEPOLIA_WSS: z.url(),
+  // Blockchain RPC endpoints and chain name (e.g. "base-sepolia").
+  BC_HTTP: z.url(),
+  BC_WSS: z.url(),
+  BC_NAME: z.string().min(1),
 
   // Redis connection for the BullMQ deploy queue (optional). When unset, the
   // contract deploy runs synchronously inside the request instead.
@@ -66,8 +67,9 @@ export const env = {
   clerkWebhookSecret: e.CLERK_WEBHOOK_SIGNING_SECRET,
   internalWalletAddress: e.INTERNAL_WALLET_ADDRESS,
   internalWalletPrivate: e.INTERNAL_WALLET_PRIVATE,
-  baseSepoliaHttp: e.BASE_SEPOLIA_HTTP,
-  baseSepoliaWss: e.BASE_SEPOLIA_WSS,
+  bcHttp: e.BC_HTTP,
+  bcWss: e.BC_WSS,
+  bcName: e.BC_NAME,
   redisUrl: e.REDIS_URL,
   centrifugoTokenSecret: e.CENTRIFUGO_TOKEN_HMAC_SECRET,
   centrifugoApiUrl: e.CENTRIFUGO_API_URL,
