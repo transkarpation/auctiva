@@ -2,6 +2,7 @@ import { type Request, type Response } from "express";
 import { z } from "zod";
 import { AuctionModel } from "../models/Auction.js";
 import { BidModel } from "../models/Bid.js";
+import { notifyNewBid } from "../lib/notifications.js";
 import { resolveOwnerNames } from "../lib/owners.js";
 import { parse } from "../lib/validate.js";
 import { env } from "../env.js";
@@ -267,6 +268,19 @@ export async function confirmBid(req: Request, res: Response): Promise<void> {
       transactionHash,
       blockNumber: result.blockNumber,
     });
+
+    // Notify the owner and other participants (best-effort — never fail the bid
+    // over a notification problem).
+    await notifyNewBid({
+      auction: { id: auction.id, userId: auction.userId, title: auction.title },
+      bid: {
+        userId: bid.userId,
+        bidder: bid.bidder,
+        amount: bid.amount,
+        transactionHash: bid.transactionHash,
+      },
+    }).catch((err) => console.error("Failed to create bid notifications:", err));
+
     res.status(201).json(bid);
   } catch (err) {
     // Unique-index race: a concurrent request recorded the same tx first.

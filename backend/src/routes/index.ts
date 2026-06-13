@@ -6,6 +6,7 @@ import { healthRouter } from "./health.router.js";
 import { groupsRouter } from "./groups.router.js";
 import { todosRouter } from "./todos.router.js";
 import { auctionsRouter } from "./auctions.router.js";
+import { notificationsRouter } from "./notifications.router.js";
 import { realtimeRouter } from "./realtime.router.js";
 import { webhooksRouter } from "./webhooks.router.js";
 
@@ -38,4 +39,5 @@ apiRouter.use("/health", healthRouter);
 apiRouter.use("/groups", requireUser, groupsRouter);
 apiRouter.use("/todos", requireUser, todosRouter);
 apiRouter.use("/auctions", requireUser, auctionsRouter);
+apiRouter.use("/notifications", requireUser, notificationsRouter);
 apiRouter.use("/realtime", requireUser, realtimeRouter);
