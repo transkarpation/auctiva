@@ -36,13 +36,13 @@ function ethToWei(input: number | string): bigint | null {
 const eq = (a?: string, b?: string) =>
   Boolean(a) && Boolean(b) && a!.toLowerCase() === b!.toLowerCase();
 
-type Props = { auction: Auction };
+type Props = { auction: Auction; isOwner?: boolean };
 
 // Lets a connected wallet bid directly on the auction's deployed contract.
 // Because the contract counts funds the bidder already has locked (refundable
 // credit + their own live bid), a returning bidder only needs to send the
 // remaining top-up — which is what this panel pre-fills.
-export function BidPanel({ auction }: Props) {
+export function BidPanel({ auction, isOwner = false }: Props) {
   const address = auction.contractAddress as `0x${string}` | undefined;
   const { address: account, isConnected, chainId } = useConnection();
   const { mutate: switchChain, isPending: switching } = useSwitchChain();
@@ -191,7 +191,11 @@ export function BidPanel({ auction }: Props) {
           </Text>
         )}
 
-        {closed ? (
+        {isOwner ? (
+          <Text size="sm" c="dimmed">
+            You own this auction — you can't bid on it.
+          </Text>
+        ) : closed ? (
           <Alert color="gray" variant="light" p="xs">
             This auction is closed for bidding.
           </Alert>
@@ -242,7 +246,7 @@ export function BidPanel({ auction }: Props) {
           </>
         )}
 
-        {credit > 0n && !busy && (
+        {!isOwner && credit > 0n && !busy && (
           <Button size="xs" variant="subtle" onClick={withdraw} loading={busy}>
             Withdraw {formatEther(credit)} ETH credit
           </Button>

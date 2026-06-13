@@ -1,9 +1,11 @@
 import { Button, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { useAuth } from '@clerk/react';
 import { usePublicAuctions } from '../../hooks/usePublicAuctions';
 import { AuctionCard } from './AuctionCard';
 
 export function PublicAuctions() {
   const { auctions, loading, error, reload } = usePublicAuctions();
+  const { userId } = useAuth();
 
   return (
     <Stack>
@@ -35,6 +37,7 @@ export function PublicAuctions() {
               key={auction._id}
               auction={auction}
               ownerName={auction.ownerName}
+              isOwner={auction.ownerId === userId}
             />
           ))}
         </SimpleGrid>

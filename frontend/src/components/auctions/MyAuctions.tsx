@@ -177,6 +177,7 @@ export function MyAuctions() {
             <AuctionCard
               key={auction._id}
               auction={auction}
+              isOwner
               onDelete={() => void remove(auction._id)}
               deleting={busy}
             />

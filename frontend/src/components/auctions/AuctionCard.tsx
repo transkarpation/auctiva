@@ -60,11 +60,12 @@ function formatEndsAt(endsAt?: string): string | null {
 type Props = {
   auction: Auction;
   ownerName?: string;
+  isOwner?: boolean;
   onDelete?: () => void;
   deleting?: boolean;
 };
 
-export function AuctionCard({ auction, ownerName, onDelete, deleting }: Props) {
+export function AuctionCard({ auction, ownerName, isOwner, onDelete, deleting }: Props) {
   const ends = formatEndsAt(auction.endsAt);
 
   return (
@@ -142,7 +143,7 @@ export function AuctionCard({ auction, ownerName, onDelete, deleting }: Props) {
         )}
 
         {auction.deploymentStatus === 'deployed' && auction.contractAddress && (
-          <BidPanel auction={auction} />
+          <BidPanel auction={auction} isOwner={isOwner} />
         )}
 
         {onDelete && (

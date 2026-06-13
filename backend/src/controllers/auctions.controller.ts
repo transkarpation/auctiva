@@ -213,6 +213,10 @@ export async function confirmBid(req: Request, res: Response): Promise<void> {
     res.status(404).json({ error: "Not found" });
     return;
   }
+  if (auction.userId === userIdOf(req)) {
+    res.status(403).json({ error: "You cannot bid on your own auction" });
+    return;
+  }
   if (auction.deploymentStatus !== "deployed" || !auction.contractAddress) {
     res.status(409).json({ error: "Auction is not deployed on-chain" });
     return;
