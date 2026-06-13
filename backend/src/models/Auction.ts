@@ -41,6 +41,10 @@ const auctionSchema = new Schema(
       enum: ["pending", "deployed", "failed"],
       default: "pending",
     },
+    // Set once the worker has handled the bidding window closing (notified the
+    // owner it's finalizable, or observed it already settled). Prevents
+    // re-notifying on every scan.
+    endNotifiedAt: { type: Date },
   },
   { timestamps: true }
 );

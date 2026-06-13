@@ -84,7 +84,9 @@ export function BidPanel({ auction, isOwner = false }: Props) {
   // enough to hide the bid form for an already-expired auction.
   const [nowSec] = useState(() => BigInt(Math.floor(Date.now() / 1000)));
   const timeUp = endTime !== 0n && nowSec > endTime;
-  const closed = ended || timeUp;
+  // Bidding window is over but the contract hasn't been finalized yet —
+  // auctionEnd() is permissionless, so anyone connected can settle it.
+  const finalizable = timeUp && !ended;
 
   // Amount to send, in ETH. While the user hasn't typed anything (empty state)
   // the field shows — and bids — the minimum top-up, derived from on-chain data
@@ -105,7 +107,7 @@ export function BidPanel({ auction, isOwner = false }: Props) {
 
   // Tracks which on-chain action the pending tx is, so we only report bids (not
   // withdrawals) to the backend once confirmed.
-  const [lastAction, setLastAction] = useState<'bid' | 'withdraw' | null>(null);
+  const [lastAction, setLastAction] = useState<'bid' | 'withdraw' | 'finalize' | null>(null);
   const [recording, setRecording] = useState(false);
   const [recorded, setRecorded] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
@@ -164,6 +166,18 @@ export function BidPanel({ auction, isOwner = false }: Props) {
     });
   };
 
+  // Finalize the auction on-chain (pays the beneficiary). Permissionless once
+  // the window has closed, so any connected user can do it.
+  const finalize = () => {
+    setLastAction('finalize');
+    writeContract({
+      address,
+      abi: simpleAuctionAbi,
+      functionName: 'auctionEnd',
+      chainId: baseSepolia.id,
+    });
+  };
+
   return (
     <>
       <Divider my={4} />
@@ -191,14 +205,36 @@ export function BidPanel({ auction, isOwner = false }: Props) {
           </Text>
         )}
 
-        {isOwner ? (
+        {ended ? (
+          <Alert color="gray" variant="light" p="xs">
+            This auction has been finalized.
+          </Alert>
+        ) : finalizable ? (
+          <Stack gap={6}>
+            <Text size="sm" c="dimmed">
+              Bidding has ended{isHighest ? ' — you won!' : '.'} Anyone can
+              finalize it to release funds.
+            </Text>
+            {!isConnected ? (
+              <ConnectWalletButton />
+            ) : wrongChain ? (
+              <Button
+                variant="default"
+                loading={switching}
+                onClick={() => switchChain({ chainId: baseSepolia.id })}
+              >
+                Switch to Base Sepolia to finalize
+              </Button>
+            ) : (
+              <Button onClick={finalize} loading={busy}>
+                Finalize auction
+              </Button>
+            )}
+          </Stack>
+        ) : isOwner ? (
           <Text size="sm" c="dimmed">
             You own this auction — you can't bid on it.
           </Text>
-        ) : closed ? (
-          <Alert color="gray" variant="light" p="xs">
-            This auction is closed for bidding.
-          </Alert>
         ) : !isConnected ? (
           <ConnectWalletButton />
         ) : wrongChain ? (

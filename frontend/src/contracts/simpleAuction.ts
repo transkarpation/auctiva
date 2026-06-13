@@ -6,6 +6,13 @@ export const simpleAuctionAbi = [
   { type: 'function', name: 'bid', stateMutability: 'payable', inputs: [], outputs: [] },
   {
     type: 'function',
+    name: 'auctionEnd',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
     name: 'withdraw',
     stateMutability: 'nonpayable',
     inputs: [],
@@ -66,6 +73,14 @@ export const simpleAuctionAbi = [
     name: 'HighestBidIncreased',
     inputs: [
       { name: 'bidder', type: 'address', indexed: false },
+      { name: 'amount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'AuctionEnded',
+    inputs: [
+      { name: 'winner', type: 'address', indexed: false },
       { name: 'amount', type: 'uint256', indexed: false },
     ],
   },
