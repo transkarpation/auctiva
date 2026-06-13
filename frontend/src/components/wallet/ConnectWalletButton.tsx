@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import { useConnection, useConnect, useDisconnect } from 'wagmi';
 import { Badge, Button, Group, Image, Modal, Stack, Text } from '@mantine/core';
 import { IconWallet } from '@tabler/icons-react';
 
@@ -8,7 +8,7 @@ function shortAddress(addr: string): string {
 }
 
 export function ConnectWalletButton() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useConnection();
   const { connectors, connect, isPending, error } = useConnect();
   const { disconnect } = useDisconnect();
   const [opened, setOpened] = useState(false);

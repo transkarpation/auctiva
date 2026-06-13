@@ -14,7 +14,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { useAccount } from 'wagmi';
+import { useConnection } from 'wagmi';
 import { parseEther } from 'viem';
 import { useAuctions } from '../../hooks/useAuctions';
 import { ConnectWalletButton } from '../wallet/ConnectWalletButton';
@@ -33,7 +33,7 @@ function ethToWei(input: number | string): bigint | null {
 
 export function MyAuctions() {
   const { auctions, loading, error, busy, create, remove } = useAuctions();
-  const { address, isConnected } = useAccount();
+  const { address, isConnected } = useConnection();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');

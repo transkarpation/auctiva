@@ -22,6 +22,38 @@ export type Auction = {
 export type PublicAuction = Auction & {
   ownerId: string;
   ownerName: string;
+  // Live on-chain state, read by the backend. Null if the read failed.
+  state: AuctionState | null;
+};
+
+// A bid recorded by the backend after on-chain confirmation.
+export type Bid = {
+  _id: string;
+  auctionId: string;
+  userId: string;
+  contractAddress: string;
+  // Bidder wallet address (lowercased) from the on-chain event.
+  bidder: string;
+  // Bid amount in wei (decimal integer string).
+  amount: string;
+  transactionHash: string;
+  blockNumber: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Live on-chain state of a deployed auction, read by the backend.
+export type AuctionState = {
+  // Smallest acceptable next bid, in wei (decimal integer string).
+  minimumBid: string;
+  // Current highest bid, in wei.
+  highestBid: string;
+  // Highest bidder's address (zero address when there are no bids).
+  highestBidder: string;
+  // The contract's ended() flag (set once the auction is finalized on-chain).
+  ended: boolean;
+  // Auction end time, unix seconds.
+  endTime: number;
 };
 
 export type NewAuction = {
@@ -51,4 +83,17 @@ export const auctionsApi = {
 
   remove: (getToken: TokenGetter, id: string) =>
     request<void>(getToken, `/auctions/${id}`, { method: 'DELETE' }),
+
+  // Live on-chain state (highest bid, minimum next bid, end time) read by the
+  // backend so the client doesn't need its own RPC connection.
+  state: (getToken: TokenGetter, id: string) =>
+    request<AuctionState>(getToken, `/auctions/${id}/state`),
+
+  // Record a bid the user placed on-chain. The backend verifies the transaction
+  // against the auction's contract before storing it.
+  confirmBid: (getToken: TokenGetter, id: string, transactionHash: string) =>
+    request<Bid>(getToken, `/auctions/${id}/bids/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ transactionHash }),
+    }),
 };

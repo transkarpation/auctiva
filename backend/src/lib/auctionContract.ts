@@ -12,6 +12,14 @@ import { SimpleAuctionArtifact } from "../SimpleAuction.js";
 const { abi, bytecode } = SimpleAuctionArtifact;
 const auctionInterface = new Interface([...abi]);
 
+// One shared provider across reads so ethers can batch concurrent eth_call
+// requests (e.g. reading state for every auction in the public feed at once).
+let sharedProvider: JsonRpcProvider | null = null;
+function getProvider(): JsonRpcProvider {
+  if (!sharedProvider) sharedProvider = new JsonRpcProvider(env.bcHttp);
+  return sharedProvider;
+}
+
 export type DeployResult = {
   contractAddress: string;
   deploymentTxHash: string;
@@ -25,7 +33,7 @@ export async function deploySimpleAuction(params: {
   beneficiary: string;
   minBidIncrementWei: string;
 }): Promise<DeployResult> {
-  const provider = new JsonRpcProvider(env.bcHttp);
+  const provider = getProvider();
   const wallet = new Wallet(env.internalWalletPrivate, provider);
   const factory = new ContractFactory([...abi], bytecode, wallet);
 
@@ -60,7 +68,7 @@ export async function confirmBidTransaction(
   txHash: string,
   contractAddress: string
 ): Promise<BidConfirmation> {
-  const provider = new JsonRpcProvider(env.bcHttp);
+  const provider = getProvider();
   const receipt = await provider.getTransactionReceipt(txHash);
 
   if (!receipt) return { status: "not_found" };
@@ -94,6 +102,41 @@ export async function confirmBidTransaction(
   return { status: "no_bid_event" };
 }
 
+// Live auction state read straight from the contract. Wei amounts are strings
+// (they exceed JS's safe integer range); endTime is unix seconds.
+export type AuctionState = {
+  minimumBid: string; // getMinimumRequiredBid — the smallest acceptable next bid
+  highestBid: string;
+  highestBidder: string; // ZeroAddress when there are no bids
+  ended: boolean; // the contract's ended() flag (set once auctionEnd() runs)
+  endTime: number; // auctionEndTime, unix seconds
+};
+
+// Reads the full live state of an auction from its on-chain contract.
+export async function readAuctionState(
+  contractAddress: string
+): Promise<AuctionState> {
+  const provider = getProvider();
+  const contract = new Contract(contractAddress, [...abi], provider);
+
+  const [minimumBid, highestBid, highestBidder, ended, endTime] =
+    await Promise.all([
+      contract.getMinimumRequiredBid() as Promise<bigint>,
+      contract.highestBid() as Promise<bigint>,
+      contract.highestBidder() as Promise<string>,
+      contract.ended() as Promise<boolean>,
+      contract.auctionEndTime() as Promise<bigint>,
+    ]);
+
+  return {
+    minimumBid: minimumBid.toString(),
+    highestBid: highestBid.toString(),
+    highestBidder,
+    ended,
+    endTime: Number(endTime),
+  };
+}
+
 export type AuctionOnChainState = {
   // True once the bidding period is over (block time >= auctionEndTime).
   ended: boolean;
@@ -101,21 +144,15 @@ export type AuctionOnChainState = {
   hasBids: boolean;
 };
 
-// Reads the live auction state from its on-chain contract. Used to decide
-// whether an auction is safe to delete (only ended auctions with no bids are).
+// Whether an auction is safe to delete: only ended auctions with no bids are.
+// Note "ended" here is time-based (the bidding window has closed), which differs
+// from the contract's ended() flag that only flips after auctionEnd() is called.
 export async function getAuctionOnChainState(
   contractAddress: string
 ): Promise<AuctionOnChainState> {
-  const provider = new JsonRpcProvider(env.bcHttp);
-  const contract = new Contract(contractAddress, [...abi], provider);
-
-  const [auctionEndTime, highestBidder] = await Promise.all([
-    contract.auctionEndTime() as Promise<bigint>,
-    contract.highestBidder() as Promise<string>,
-  ]);
-
+  const { endTime, highestBidder } = await readAuctionState(contractAddress);
   return {
-    ended: Date.now() >= Number(auctionEndTime) * 1000,
+    ended: Date.now() >= endTime * 1000,
     hasBids: highestBidder !== ZeroAddress,
   };
 }

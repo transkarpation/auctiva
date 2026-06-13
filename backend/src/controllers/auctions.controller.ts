@@ -9,6 +9,7 @@ import { userIdOf } from "../lib/http.js";
 import {
   deploySimpleAuction,
   getAuctionOnChainState,
+  readAuctionState,
   confirmBidTransaction,
 } from "../lib/auctionContract.js";
 import { queueEnabled, enqueueDeploy } from "../queue/deployQueue.js";
@@ -53,11 +54,23 @@ export async function listPublicAuctions(_req: Request, res: Response): Promise<
     ...new Set(auctions.map((a) => a.userId)),
   ]);
 
+  // Read each auction's live on-chain state in parallel (ethers batches these
+  // through the shared provider). One contract failing to read shouldn't break
+  // the whole feed, so a failed read just yields a null state for that auction.
+  const states = await Promise.all(
+    auctions.map((a) =>
+      a.contractAddress
+        ? readAuctionState(a.contractAddress).catch(() => null)
+        : Promise.resolve(null)
+    )
+  );
+
   res.json(
-    auctions.map((a) => ({
+    auctions.map((a, i) => ({
       ...a,
       ownerId: a.userId,
       ownerName: names.get(a.userId) ?? "Unknown user",
+      state: states[i],
     }))
   );
 }
@@ -154,6 +167,28 @@ export async function deleteAuction(req: Request, res: Response): Promise<void> 
 
   await auction.deleteOne();
   res.status(204).end();
+}
+
+// Live on-chain state of a deployed auction (highest bid, minimum next bid,
+// end time, etc.), read server-side so the client doesn't need its own RPC.
+export async function getAuctionState(req: Request, res: Response): Promise<void> {
+  const auction = await AuctionModel.findById(req.params.id);
+  if (!auction) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (auction.deploymentStatus !== "deployed" || !auction.contractAddress) {
+    res.status(409).json({ error: "Auction is not deployed on-chain" });
+    return;
+  }
+
+  try {
+    const state = await readAuctionState(auction.contractAddress);
+    res.json(state);
+  } catch (err) {
+    console.error("Failed to read auction state on-chain:", err);
+    res.status(502).json({ error: "Could not read auction state on-chain" });
+  }
 }
 
 const confirmBidSchema = z.object({

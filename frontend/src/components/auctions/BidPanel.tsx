@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth } from '@clerk/react';
 import {
   Alert,
   Button,
@@ -9,18 +10,18 @@ import {
   Text,
 } from '@mantine/core';
 import {
-  useAccount,
+  useConnection,
   useReadContract,
-  useReadContracts,
   useSwitchChain,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from 'wagmi';
 import { baseSepolia } from 'wagmi/chains';
+import { useQuery } from '@tanstack/react-query';
 import { formatEther, parseEther } from 'viem';
 import { ConnectWalletButton } from '../wallet/ConnectWalletButton';
 import { simpleAuctionAbi } from '../../contracts/simpleAuction';
-import type { Auction } from '../../api/auctions';
+import { auctionsApi, type Auction } from '../../api/auctions';
 
 function ethToWei(input: number | string): bigint | null {
   const s = typeof input === 'number' ? String(input) : input.trim();
@@ -43,22 +44,20 @@ type Props = { auction: Auction };
 // remaining top-up — which is what this panel pre-fills.
 export function BidPanel({ auction }: Props) {
   const address = auction.contractAddress as `0x${string}` | undefined;
-  const { address: account, isConnected, chainId } = useAccount();
-  const { switchChain, isPending: switching } = useSwitchChain();
+  const { address: account, isConnected, chainId } = useConnection();
+  const { mutate: switchChain, isPending: switching } = useSwitchChain();
 
   const contract = { address, abi: simpleAuctionAbi, chainId: baseSepolia.id } as const;
 
-  // Core auction state (always readable from Base Sepolia regardless of the
-  // wallet's current chain).
-  const state = useReadContracts({
-    query: { enabled: Boolean(address) },
-    contracts: [
-      { ...contract, functionName: 'getMinimumRequiredBid' },
-      { ...contract, functionName: 'highestBid' },
-      { ...contract, functionName: 'highestBidder' },
-      { ...contract, functionName: 'ended' },
-      { ...contract, functionName: 'auctionEndTime' },
-    ],
+  const { getToken } = useAuth();
+  const token = useCallback(() => getToken(), [getToken]);
+
+  // Core auction state — read server-side (highest bid, minimum next bid, end
+  // time) so the browser doesn't need its own RPC connection.
+  const stateQuery = useQuery({
+    queryKey: ['auction-state', auction._id],
+    enabled: Boolean(address),
+    queryFn: () => auctionsApi.state(token, auction._id),
   });
 
   // The caller's refundable credit from being outbid before.
@@ -69,11 +68,11 @@ export function BidPanel({ auction }: Props) {
     query: { enabled: Boolean(address && account) },
   });
 
-  const minRequired = (state.data?.[0]?.result as bigint | undefined) ?? 0n;
-  const highestBid = (state.data?.[1]?.result as bigint | undefined) ?? 0n;
-  const highestBidder = state.data?.[2]?.result as string | undefined;
-  const ended = (state.data?.[3]?.result as boolean | undefined) ?? false;
-  const endTime = (state.data?.[4]?.result as bigint | undefined) ?? 0n;
+  const minRequired = stateQuery.data ? BigInt(stateQuery.data.minimumBid) : 0n;
+  const highestBid = stateQuery.data ? BigInt(stateQuery.data.highestBid) : 0n;
+  const highestBidder = stateQuery.data?.highestBidder;
+  const ended = stateQuery.data?.ended ?? false;
+  const endTime = stateQuery.data ? BigInt(stateQuery.data.endTime) : 0n;
   const credit = (credits.data as bigint | undefined) ?? 0n;
 
   const isHighest = eq(account, highestBidder);
@@ -100,18 +99,41 @@ export function BidPanel({ auction }: Props) {
   const totalBid = sendWei !== null ? sendWei + existing : null;
   const meetsMin = totalBid !== null && totalBid >= minRequired && minRequired > 0n;
 
-  const { writeContract, data: hash, isPending: signing, error: writeError, reset } =
+  const { mutate: writeContract, data: hash, isPending: signing, error: writeError, reset } =
     useWriteContract();
   const receipt = useWaitForTransactionReceipt({ hash, chainId: baseSepolia.id });
 
+  // Tracks which on-chain action the pending tx is, so we only report bids (not
+  // withdrawals) to the backend once confirmed.
+  const [lastAction, setLastAction] = useState<'bid' | 'withdraw' | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [recorded, setRecorded] = useState(false);
+  const [recordError, setRecordError] = useState<string | null>(null);
+
   // After a confirmed bid/withdraw, refresh on-chain state. (refetch/reset are
-  // not React state, so this stays out of the cascading-render trap.)
+  // not React state, so this stays out of the cascading-render trap.) For a bid,
+  // also report the transaction to the backend so it's verified and stored.
   useEffect(() => {
-    if (receipt.isSuccess) {
-      void state.refetch();
-      void credits.refetch();
-      reset();
+    if (!receipt.isSuccess) return;
+    void stateQuery.refetch();
+    void credits.refetch();
+
+    if (lastAction === 'bid' && hash) {
+      const txHash = hash;
+      setRecording(true);
+      setRecorded(false);
+      setRecordError(null);
+      auctionsApi
+        .confirmBid(token, auction._id, txHash)
+        .then(() => setRecorded(true))
+        .catch((err) =>
+          setRecordError(err instanceof Error ? err.message : 'Failed to record bid'),
+        )
+        .finally(() => setRecording(false));
     }
+
+    setLastAction(null);
+    reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt.isSuccess]);
 
@@ -122,6 +144,7 @@ export function BidPanel({ auction }: Props) {
 
   const placeBid = () => {
     if (sendWei === null) return;
+    setLastAction('bid');
     writeContract({
       address,
       abi: simpleAuctionAbi,
@@ -132,6 +155,7 @@ export function BidPanel({ auction }: Props) {
   };
 
   const withdraw = () => {
+    setLastAction('withdraw');
     writeContract({
       address,
       abi: simpleAuctionAbi,
@@ -232,6 +256,21 @@ export function BidPanel({ auction }: Props) {
         {receipt.isSuccess && (
           <Text size="xs" c="teal">
             Transaction confirmed.
+          </Text>
+        )}
+        {recording && (
+          <Text size="xs" c="dimmed">
+            Recording your bid…
+          </Text>
+        )}
+        {recorded && (
+          <Text size="xs" c="teal">
+            Bid recorded.
+          </Text>
+        )}
+        {recordError && (
+          <Text size="xs" c="red">
+            {recordError}
           </Text>
         )}
       </Stack>
