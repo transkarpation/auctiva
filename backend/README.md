@@ -1,8 +1,9 @@
 # Auctiva Backend
 
 Express + TypeScript API with MongoDB (Mongoose), Clerk authentication, Clerk
-webhooks (Svix), on-chain auction deployment (ethers + Base Sepolia), and
-realtime push via Centrifugo.
+webhooks (Svix), on-chain auction deployment (ethers + Base Sepolia), realtime
+push via Centrifugo, and file uploads to private S3 served via CloudFront signed
+URLs.
 
 ## Scripts
 
@@ -40,6 +41,7 @@ Copy `.env.example` to `.env` and fill in:
 | `CENTRIFUGO_TOKEN_HMAC_SECRET` | Signs Centrifugo connection tokens (match the container)     |
 | `CENTRIFUGO_API_URL`           | Centrifugo HTTP API base (default `http://localhost:8000/api`)|
 | `CENTRIFUGO_API_KEY`           | Centrifugo HTTP API key (match the container)                |
+| `AWS_*` / `S3_BUCKET` / `CLOUDFRONT_*` | File storage (S3 + CloudFront signed URLs) — see [File storage](#file-storage-s3--cloudfront) |
 
 ## API
 
@@ -66,6 +68,9 @@ Unauthenticated requests get `401 { "error": "Unauthorized" }`.
 | `DELETE` | `/auctions/:id`             | user   | Delete one of the user's auctions            |
 | `GET`    | `/realtime/centrifugo-token`| user   | Mint a Centrifugo connection token + channel |
 | `POST`   | `/realtime/notify-self`     | user   | Demo: publish to the caller's personal channel |
+| `GET`    | `/files`                    | user   | List the user's files (with stored signed URLs) |
+| `POST`   | `/files`                    | user   | Upload a file (`multipart`, field `file`) → stored signed URL |
+| `DELETE` | `/files/:id`                | user   | Delete a file (S3 object + metadata)         |
 | `POST`   | `/api/webhooks/clerk`       | signed | Clerk webhook receiver (Svix)                |
 
 HTTP requests are logged with **morgan** (`dev` format in development,
@@ -140,6 +145,23 @@ Centrifugo runs as a Docker service (see root `docker-compose.yml`) on
 `:8000`, using Redis as its engine. Browser origins must be allow-listed via
 `CENTRIFUGO_CLIENT_ALLOWED_ORIGINS`.
 
+## File storage (S3 + CloudFront)
+
+`POST /files` accepts a `multipart/form-data` upload (field `file`), buffers it
+in memory (multer), and stores it in a **private** S3 bucket. At upload time the
+backend mints a **CloudFront signed URL** (7-day default), persists it on the
+file record, and returns it in the response — so the client gets an immediately
+usable link without a second call. The bucket has Block Public Access on and is
+reachable only through CloudFront (OAC); direct S3 access is denied, and the
+signed URL stops working once it expires.
+
+The routes return `503` until the AWS env (`AWS_REGION`, `S3_BUCKET`,
+`CLOUDFRONT_DOMAIN`, `CLOUDFRONT_KEY_PAIR_ID`, `CLOUDFRONT_PRIVATE_KEY`) is set.
+
+**Provisioning the AWS resources** (private bucket, OAC, CloudFront distribution,
+signing key group, bucket policy, IAM, env vars) is documented step-by-step in
+[`docs/file-storage-setup.md`](docs/file-storage-setup.md).
+
 ## Structure
 
 ```
@@ -156,11 +178,14 @@ src/
 │   ├── Group.ts          # { userId, name, isPublic }
 │   ├── Todo.ts           # { userId, groupId, title, completed }
 │   ├── Auction.ts        # { userId, title, startingPrice(wei), minBidIncrement(wei), … }
+│   ├── File.ts           # { userId, key, originalName, contentType, size, signedUrl, … }
 │   └── User.ts           # Clerk user mirror { clerkId, email, firstName, … }
 ├── lib/
 │   ├── auctionContract.ts # ethers deploy of SimpleAuction
 │   ├── auctionEvents.ts   # publishAuctionUpdate → owner's personal channel
 │   ├── centrifugo.ts      # connection-token JWT + HTTP API publish
+│   ├── s3.ts              # S3 client: putObject / deleteObject + key builder
+│   ├── cloudfront.ts      # mint CloudFront signed URLs
 │   ├── owners.ts          # resolve Clerk user ids → display names
 │   ├── validate.ts        # zod helpers
 │   └── slug.ts
@@ -172,6 +197,7 @@ src/
     ├── todos.ts
     ├── auctions.ts
     ├── realtime.ts        # Centrifugo token + notify-self
+    ├── files.ts           # upload / list / delete files
     └── webhooks.ts        # Clerk/Svix webhook → user upsert / delete
 ```
 
