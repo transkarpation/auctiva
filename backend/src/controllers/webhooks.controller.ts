@@ -1,4 +1,5 @@
 import { type Request, type Response } from "express";
+import { clerkClient } from "@clerk/express";
 import { Webhook } from "svix";
 import { env } from "../env.js";
 import { TodoModel } from "../models/Todo.js";
@@ -7,6 +8,8 @@ import { UserModel } from "../models/User.js";
 // Subset of Clerk's user webhook payload we read.
 type ClerkUserData = {
   id?: string;
+  // session.* events carry the user id here rather than as `id`.
+  user_id?: string;
   email_addresses?: { id: string; email_address: string }[];
   primary_email_address_id?: string | null;
   first_name?: string | null;
@@ -40,6 +43,32 @@ async function upsertUser(data: ClerkUserData): Promise<void> {
       lastName: data.last_name ?? undefined,
       username: data.username ?? undefined,
       imageUrl: data.image_url ?? undefined,
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+}
+
+// Ensures a local mirror exists for the given Clerk user. Used by events that
+// only carry a user id (e.g. session.created) — if we've never seen the user
+// (a missed user.created webhook), fetch the full profile from Clerk and store
+// it. No-op when the user already exists, to avoid a Clerk API call per sign-in.
+async function ensureUserExists(clerkId: string): Promise<void> {
+  if (await UserModel.exists({ clerkId })) return;
+
+  const u = await clerkClient.users.getUser(clerkId);
+  const primaryEmail =
+    u.emailAddresses?.find((e) => e.id === u.primaryEmailAddressId)?.emailAddress ??
+    u.emailAddresses?.[0]?.emailAddress;
+
+  await UserModel.findOneAndUpdate(
+    { clerkId: u.id },
+    {
+      clerkId: u.id,
+      email: primaryEmail,
+      firstName: u.firstName ?? undefined,
+      lastName: u.lastName ?? undefined,
+      username: u.username ?? undefined,
+      imageUrl: u.imageUrl ?? undefined,
     },
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
@@ -88,6 +117,14 @@ export async function handleClerkWebhook(req: Request, res: Response): Promise<v
       await upsertUser(event.data);
       console.log(`${event.type}: ${event.data.id}`);
       break;
+    case "session.created": {
+      const userId = event.data.user_id;
+      if (userId) {
+        await ensureUserExists(userId);
+        console.log(`session.created: ensured user ${userId}`);
+      }
+      break;
+    }
     default:
       console.log(`Unhandled webhook event: ${event.type}`);
   }
