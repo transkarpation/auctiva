@@ -8,6 +8,14 @@ const ethPrivateKey = z
   .string()
   .regex(/^0x[a-fA-F0-9]{64}$/, "must be a 0x-prefixed 64-hex private key");
 
+// An optional non-empty string that also treats an empty/whitespace .env value
+// (e.g. "AWS_ACCESS_KEY_ID=") as absent, since dotenv yields "" rather than
+// undefined for a present-but-blank key.
+const optionalStr = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.string().min(1).optional()
+);
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -47,21 +55,21 @@ const envSchema = z.object({
   // All optional: when storage is unconfigured the file routes return 503.
   // AWS_ACCESS_KEY_ID/SECRET fall back to the default AWS credential chain
   // (shared config, env, or instance role) when left blank.
-  AWS_REGION: z.string().min(1).optional(),
-  AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
-  AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  AWS_REGION: optionalStr,
+  AWS_ACCESS_KEY_ID: optionalStr,
+  AWS_SECRET_ACCESS_KEY: optionalStr,
   // Private S3 bucket uploads are stored in (Block Public Access on).
-  S3_BUCKET: z.string().min(1).optional(),
+  S3_BUCKET: optionalStr,
   // Max accepted upload size in bytes (default 10 MiB).
   UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
   // CloudFront distribution domain fronting the bucket, e.g.
   // "d111111abcdef8.cloudfront.net" (no scheme, no trailing slash).
-  CLOUDFRONT_DOMAIN: z.string().min(1).optional(),
+  CLOUDFRONT_DOMAIN: optionalStr,
   // CloudFront public-key id used to sign URLs (e.g. "K2JCJMDEHXQW5F").
-  CLOUDFRONT_KEY_PAIR_ID: z.string().min(1).optional(),
+  CLOUDFRONT_KEY_PAIR_ID: optionalStr,
   // PEM private key matching that public key. Supports literal "\n" escapes so
   // it can sit on a single .env line.
-  CLOUDFRONT_PRIVATE_KEY: z.string().min(1).optional(),
+  CLOUDFRONT_PRIVATE_KEY: optionalStr,
   // Signed-URL lifetime in seconds. Minted once at upload time and stored with
   // the file (default 7 days).
   SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 60 * 60),
