@@ -11,7 +11,8 @@
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc --noEmit",
     "create-wallet": "tsx scripts/create-wallet.ts",
-    "backfill-users": "tsx scripts/backfill-users.ts"
+    "backfill-users": "tsx scripts/backfill-users.ts",
+    "refresh-file-urls": "tsx scripts/refresh-file-urls.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1068.0",

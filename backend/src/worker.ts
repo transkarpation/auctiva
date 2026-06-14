@@ -1,5 +1,9 @@
 import { connectDB } from "./config/db.js";
 import { startDeployWorker } from "./queue/deployQueue.js";
+import {
+  scheduleUrlRefresh,
+  startUrlRefreshWorker,
+} from "./queue/refreshUrlsQueue.js";
 import { startAuctionWatcher, stopAuctionWatcher } from "./lib/auctionWatcher.js";
 import { env } from "./env.js";
 import { logger } from "./lib/logger.js";
@@ -23,10 +27,18 @@ async function start(): Promise<void> {
       );
     }
 
+    // Every-5-days cron that re-signs file CloudFront URLs before they expire.
+    const urlRefreshWorker = env.redisUrl ? startUrlRefreshWorker() : null;
+    if (urlRefreshWorker) {
+      await scheduleUrlRefresh();
+      logger.info("File URL refresh worker started; refresh scheduled every 5 days.");
+    }
+
     const shutdown = async (signal: string): Promise<void> => {
       logger.info(`Received ${signal}, shutting down...`);
       await stopAuctionWatcher();
       if (deployWorker) await deployWorker.close();
+      if (urlRefreshWorker) await urlRefreshWorker.close();
       process.exit(0);
     };
     process.on("SIGINT", () => void shutdown("SIGINT"));
