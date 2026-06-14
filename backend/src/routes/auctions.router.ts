@@ -4,6 +4,8 @@ import {
   listPublicAuctions,
   listAuctions,
   createAuction,
+  updateAuction,
+  publishAuction,
   deleteAuction,
   getAuction,
   getAuctionState,
@@ -20,5 +22,7 @@ auctionsRouter.get("/:id/state", asyncHandler(getAuctionState));
 auctionsRouter.get("/:id/bids", asyncHandler(listAuctionBids));
 auctionsRouter.get("/:id", asyncHandler(getAuction));
 auctionsRouter.post("/", asyncHandler(createAuction));
+auctionsRouter.post("/:id/publish", asyncHandler(publishAuction));
 auctionsRouter.post("/:id/bids/confirm", asyncHandler(confirmBid));
+auctionsRouter.patch("/:id", asyncHandler(updateAuction));
 auctionsRouter.delete("/:id", asyncHandler(deleteAuction));

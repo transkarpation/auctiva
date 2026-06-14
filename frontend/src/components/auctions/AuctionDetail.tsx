@@ -2,24 +2,69 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@clerk/react';
 import {
+  ActionIcon,
   Alert,
   Anchor,
   Badge,
   Button,
   Card,
+  Grid,
   Group,
   Image,
   Loader,
-  SimpleGrid,
+  Modal,
   Stack,
   Table,
   Text,
   Title,
 } from '@mantine/core';
-import { IconArrowLeft, IconExternalLink, IconWallet } from '@tabler/icons-react';
+import {
+  IconArrowLeft,
+  IconArrowsMaximize,
+  IconExternalLink,
+  IconWallet,
+} from '@tabler/icons-react';
 import { formatEther } from 'viem';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { Navigation, Pagination } from 'swiper/modules';
+import 'swiper/css';
+import 'swiper/css/navigation';
+import 'swiper/css/pagination';
 import { auctionsApi, type Bid, type PublicAuction } from '../../api/auctions';
 import { BidPanel } from './BidPanel';
+
+// An auction image with a "view full size" button overlaid in the corner.
+function ZoomableImage({
+  src,
+  alt,
+  onZoom,
+}: {
+  src: string;
+  alt: string;
+  onZoom: () => void;
+}) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <Image
+        src={src}
+        radius="md"
+        h={320}
+        fit="cover"
+        alt={alt}
+        fallbackSrc="https://placehold.co/600x400?text=Image+unavailable"
+      />
+      <ActionIcon
+        variant="default"
+        size="md"
+        aria-label="View full size"
+        onClick={onZoom}
+        style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}
+      >
+        <IconArrowsMaximize size={16} />
+      </ActionIcon>
+    </div>
+  );
+}
 
 function formatPrice(wei: string): string {
   try {
@@ -115,6 +160,8 @@ export function AuctionDetail() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // URL of the image shown full-size in the lightbox modal, or null when closed.
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -183,73 +230,94 @@ export function AuctionDetail() {
                 </Group>
               </Group>
 
-              {images.length > 0 && (
-                <SimpleGrid cols={{ base: 1, sm: images.length > 1 ? 2 : 1 }}>
-                  {images.map((img) => (
-                    <Image
-                      key={img.fileId}
-                      src={img.url}
-                      radius="md"
-                      h={220}
-                      fit="cover"
-                      alt={auction.title}
-                      fallbackSrc="https://placehold.co/600x400?text=Image+unavailable"
-                    />
-                  ))}
-                </SimpleGrid>
-              )}
-
-              {auction.description && <Text c="dimmed">{auction.description}</Text>}
-
-              <Group gap="xl">
-                <div>
-                  <Text size="xs" c="dimmed">Starting price</Text>
-                  <Text fw={700}>{formatPrice(auction.startingPrice)}</Text>
-                </div>
-                <div>
-                  <Text size="xs" c="dimmed">Min raise per bid</Text>
-                  <Text fw={700}>{formatPrice(auction.minBidIncrement)}</Text>
-                </div>
-                {auction.state && (
-                  <div>
-                    <Text size="xs" c="dimmed">Highest bid</Text>
-                    <Text fw={700}>
-                      {BigInt(auction.state.highestBid) > 0n
-                        ? formatPrice(auction.state.highestBid)
-                        : '—'}
-                    </Text>
-                  </div>
+              <Grid gap="lg">
+                {images.length > 0 && (
+                  <Grid.Col span={{ base: 12, sm: 5 }}>
+                    {images.length === 1 ? (
+                      <ZoomableImage
+                        src={images[0].url}
+                        alt={auction.title}
+                        onZoom={() => setZoomedImage(images[0].url)}
+                      />
+                    ) : (
+                      <Swiper
+                        modules={[Navigation, Pagination]}
+                        navigation
+                        pagination={{ clickable: true }}
+                        spaceBetween={8}
+                        slidesPerView={1}
+                        style={{ borderRadius: 'var(--mantine-radius-md)' }}
+                      >
+                        {images.map((img) => (
+                          <SwiperSlide key={img.fileId}>
+                            <ZoomableImage
+                              src={img.url}
+                              alt={auction.title}
+                              onZoom={() => setZoomedImage(img.url)}
+                            />
+                          </SwiperSlide>
+                        ))}
+                      </Swiper>
+                    )}
+                  </Grid.Col>
                 )}
-              </Group>
 
-              <Group gap="lg">
-                <Text size="sm" c="dimmed">by {auction.ownerName}</Text>
-                {auction.walletAddress && (
-                  <Group gap={4} wrap="nowrap">
-                    <IconWallet size={14} />
-                    <Text size="sm" c="dimmed" title={auction.walletAddress}>
-                      {shortAddress(auction.walletAddress)}
-                    </Text>
-                  </Group>
-                )}
-                {ends && <Text size="sm" c="dimmed">{ends}</Text>}
-                {auction.contractAddress && (
-                  <Anchor
-                    href={explorerAddressUrl(auction.contractAddress)}
-                    target="_blank"
-                    size="sm"
-                  >
-                    <Group gap={4} wrap="nowrap">
-                      <IconExternalLink size={12} />
-                      Contract {shortAddress(auction.contractAddress)}
+                <Grid.Col span={{ base: 12, sm: images.length > 0 ? 7 : 12 }}>
+                  <Stack>
+                    {auction.description && <Text c="dimmed">{auction.description}</Text>}
+
+                    <Group gap="xl">
+                      <div>
+                        <Text size="xs" c="dimmed">Starting price</Text>
+                        <Text fw={700}>{formatPrice(auction.startingPrice)}</Text>
+                      </div>
+                      <div>
+                        <Text size="xs" c="dimmed">Min raise per bid</Text>
+                        <Text fw={700}>{formatPrice(auction.minBidIncrement)}</Text>
+                      </div>
+                      {auction.state && (
+                        <div>
+                          <Text size="xs" c="dimmed">Highest bid</Text>
+                          <Text fw={700}>
+                            {BigInt(auction.state.highestBid) > 0n
+                              ? formatPrice(auction.state.highestBid)
+                              : '—'}
+                          </Text>
+                        </div>
+                      )}
                     </Group>
-                  </Anchor>
-                )}
-              </Group>
 
-              {auction.deploymentStatus === 'deployed' && auction.contractAddress && (
-                <BidPanel auction={auction} isOwner={auction.ownerId === userId} />
-              )}
+                    <Group gap="lg">
+                      <Text size="sm" c="dimmed">by {auction.ownerName}</Text>
+                      {auction.walletAddress && (
+                        <Group gap={4} wrap="nowrap">
+                          <IconWallet size={14} />
+                          <Text size="sm" c="dimmed" title={auction.walletAddress}>
+                            {shortAddress(auction.walletAddress)}
+                          </Text>
+                        </Group>
+                      )}
+                      {ends && <Text size="sm" c="dimmed">{ends}</Text>}
+                      {auction.contractAddress && (
+                        <Anchor
+                          href={explorerAddressUrl(auction.contractAddress)}
+                          target="_blank"
+                          size="sm"
+                        >
+                          <Group gap={4} wrap="nowrap">
+                            <IconExternalLink size={12} />
+                            Contract {shortAddress(auction.contractAddress)}
+                          </Group>
+                        </Anchor>
+                      )}
+                    </Group>
+
+                    {auction.deploymentStatus === 'deployed' && auction.contractAddress && (
+                      <BidPanel auction={auction} isOwner={auction.ownerId === userId} />
+                    )}
+                  </Stack>
+                </Grid.Col>
+              </Grid>
             </Stack>
           </Card>
 
@@ -266,6 +334,25 @@ export function AuctionDetail() {
           </Card>
         </>
       )}
+
+      <Modal
+        opened={zoomedImage !== null}
+        onClose={() => setZoomedImage(null)}
+        size="xl"
+        centered
+        padding="md"
+        title="Image"
+      >
+        {zoomedImage && (
+          <Image
+            src={zoomedImage}
+            fit="contain"
+            mah="80vh"
+            alt={auction?.title ?? 'Auction image'}
+            fallbackSrc="https://placehold.co/600x400?text=Image+unavailable"
+          />
+        )}
+      </Modal>
     </Stack>
   );
 }

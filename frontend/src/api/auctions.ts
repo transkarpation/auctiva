@@ -18,6 +18,8 @@ export type Auction = {
   minBidIncrement: string;
   walletAddress: string;
   isPublic: boolean;
+  // Lifecycle: a draft is owner-only and editable; publishing deploys it.
+  status?: 'draft' | 'published';
   endsAt?: string;
   contractAddress?: string;
   deploymentTxHash?: string;
@@ -93,11 +95,23 @@ export const auctionsApi = {
   listBids: (getToken: TokenGetter, id: string) =>
     request<Bid[]>(getToken, `/auctions/${id}/bids`),
 
+  // Creates the auction as a draft (not yet on chain).
   create: (getToken: TokenGetter, data: NewAuction) =>
     request<Auction>(getToken, '/auctions', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // Edit a draft auction (any subset of fields).
+  update: (getToken: TokenGetter, id: string, data: Partial<NewAuction>) =>
+    request<Auction>(getToken, `/auctions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  // Publish a draft — flips it to published and triggers deployment.
+  publish: (getToken: TokenGetter, id: string) =>
+    request<Auction>(getToken, `/auctions/${id}/publish`, { method: 'POST' }),
 
   remove: (getToken: TokenGetter, id: string) =>
     request<void>(getToken, `/auctions/${id}`, { method: 'DELETE' }),

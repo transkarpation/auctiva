@@ -42,6 +42,31 @@ const createAuctionSchema = z.object({
   imageFileIds: z.array(objectId).max(8).optional(),
 });
 
+// Editing a draft: every field optional, same validation rules, but NO defaults
+// — an omitted field must leave the stored value untouched (not reset it).
+const updateAuctionSchema = z.object({
+  title: z.string().trim().min(1, "title is required").max(200).optional(),
+  description: z.string().trim().max(2000).optional(),
+  startingPrice: z
+    .string()
+    .trim()
+    .regex(/^\d+$/, "startingPrice must be a wei amount (non-negative integer string)")
+    .optional(),
+  minBidIncrement: z
+    .string()
+    .trim()
+    .regex(/^\d+$/, "minBidIncrement must be a wei amount (non-negative integer string)")
+    .optional(),
+  isPublic: z.boolean().optional(),
+  endsAt: z.coerce.date().optional(),
+  walletAddress: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, "A valid wallet address is required")
+    .transform((s) => s.toLowerCase())
+    .optional(),
+  imageFileIds: z.array(objectId).max(8).optional(),
+});
+
 // Public feed: every authenticated user can browse public auctions, but only
 // those whose on-chain contract is actually deployed (pending/failed/off-chain
 // auctions are hidden from the feed).
@@ -88,47 +113,109 @@ export async function listAuctions(req: Request, res: Response): Promise<void> {
 }
 
 // Create an auction.
+// Resolves attached file ids (only the user's own) into image snapshots, in the
+// order the client sent them. Each snapshot freezes the file's signed URL.
+async function resolveImages(
+  userId: string,
+  imageFileIds: string[] | undefined
+): Promise<{ fileId: string; url: string }[]> {
+  if (!imageFileIds?.length) return [];
+  const files = await FileModel.find({ _id: { $in: imageFileIds }, userId });
+  const byId = new Map(files.map((f) => [f.id as string, f]));
+  return imageFileIds.flatMap((id) => {
+    const f = byId.get(id);
+    return f ? [{ fileId: f.id, url: f.signedUrl }] : [];
+  });
+}
+
+// Create an auction as a DRAFT — owner-only, editable, and not yet on chain.
+// Publishing it later (POST /:id/publish) is what triggers deployment.
 export async function createAuction(req: Request, res: Response): Promise<void> {
   const data = parse(createAuctionSchema, req.body, res);
   if (!data) return;
   const userId = userIdOf(req);
   const { imageFileIds, ...auctionData } = data;
 
-  const biddingTimeSeconds = data.endsAt
-    ? Math.max(
-      MIN_BIDDING_SECONDS,
-      Math.floor((data.endsAt.getTime() - Date.now()) / 1000)
-    )
-    : DEFAULT_BIDDING_SECONDS;
-
-  // Resolve the attached files (only the user's own) and snapshot their signed
-  // URLs onto the auction. Preserves the order the client sent.
-  let images: { fileId: string; url: string }[] = [];
-  if (imageFileIds?.length) {
-    const files = await FileModel.find({ _id: { $in: imageFileIds }, userId });
-    const byId = new Map(files.map((f) => [f.id as string, f]));
-    images = imageFileIds.flatMap((id) => {
-      const f = byId.get(id);
-      return f ? [{ fileId: f.id, url: f.signedUrl }] : [];
-    });
-  }
-
   const auction = await AuctionModel.create({
     userId,
     ...auctionData,
-    images,
-    chain: env.bcName,
-    deploymentStatus: "pending",
-  });
-  await enqueueDeploy({
-    auctionId: auction.id,
-    startingPriceWei: data.startingPrice,
-    biddingTimeSeconds,
-    beneficiary: data.walletAddress,
-    minBidIncrementWei: data.minBidIncrement,
+    images: await resolveImages(userId, imageFileIds),
+    status: "draft",
+    deploymentStatus: "none",
   });
   res.status(201).json(auction);
-  return
+}
+
+// Edit a draft auction. Only the owner, and only while still a draft (a
+// published auction is on chain and immutable here). Any provided field is
+// updated; omitted fields are left as-is.
+export async function updateAuction(req: Request, res: Response): Promise<void> {
+  if (!objectId.safeParse(req.params.id).success) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const data = parse(updateAuctionSchema, req.body, res);
+  if (!data) return;
+  const userId = userIdOf(req);
+
+  const auction = await AuctionModel.findOne({ _id: req.params.id, userId });
+  if (!auction) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (auction.status !== "draft") {
+    res.status(409).json({ error: "Only draft auctions can be edited" });
+    return;
+  }
+
+  const { imageFileIds, ...fields } = data;
+  Object.assign(auction, fields);
+  if (imageFileIds !== undefined) {
+    auction.set("images", await resolveImages(userId, imageFileIds));
+  }
+  await auction.save();
+  res.json(auction);
+}
+
+// Publish a draft: flip it to "published" and enqueue the on-chain deploy. Only
+// the owner, and only from the draft state.
+export async function publishAuction(req: Request, res: Response): Promise<void> {
+  if (!objectId.safeParse(req.params.id).success) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const userId = userIdOf(req);
+
+  const auction = await AuctionModel.findOne({ _id: req.params.id, userId });
+  if (!auction) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  if (auction.status !== "draft") {
+    res.status(409).json({ error: "Auction is already published" });
+    return;
+  }
+
+  const biddingTimeSeconds = auction.endsAt
+    ? Math.max(
+      MIN_BIDDING_SECONDS,
+      Math.floor((auction.endsAt.getTime() - Date.now()) / 1000)
+    )
+    : DEFAULT_BIDDING_SECONDS;
+
+  auction.status = "published";
+  auction.deploymentStatus = "pending";
+  auction.chain = env.bcName;
+  await auction.save();
+
+  await enqueueDeploy({
+    auctionId: auction.id,
+    startingPriceWei: auction.startingPrice,
+    biddingTimeSeconds,
+    beneficiary: auction.walletAddress,
+    minBidIncrementWei: auction.minBidIncrement,
+  });
+  res.json(auction);
 }
 
 // Delete one of the user's auctions. A deployed auction can only be removed once
@@ -144,6 +231,13 @@ export async function deleteAuction(req: Request, res: Response): Promise<void> 
   });
   if (!auction) {
     res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  // Drafts never made it on chain, so they're always safe to delete.
+  if (auction.status === "draft") {
+    await auction.deleteOne();
+    res.status(204).end();
     return;
   }
 

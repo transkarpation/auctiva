@@ -1,4 +1,4 @@
-import { Button, Group, Loader, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { Button, Grid, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import { useAuth } from '@clerk/react';
 import { usePublicAuctions } from '../../hooks/usePublicAuctions';
 import { AuctionCard } from './AuctionCard';
@@ -31,16 +31,17 @@ export function PublicAuctions() {
           No public auctions yet.
         </Text>
       ) : (
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        <Grid>
           {auctions.map((auction) => (
-            <AuctionCard
-              key={auction._id}
-              auction={auction}
-              ownerName={auction.ownerName}
-              isOwner={auction.ownerId === userId}
-            />
+            <Grid.Col key={auction._id} span={4}>
+              <AuctionCard
+                auction={auction}
+                ownerName={auction.ownerName}
+                isOwner={auction.ownerId === userId}
+              />
+            </Grid.Col>
           ))}
-        </SimpleGrid>
+        </Grid>
       )}
     </Stack>
   );

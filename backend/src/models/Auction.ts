@@ -43,16 +43,25 @@ const auctionSchema = new Schema(
     },
     // When true, any authenticated user can see this auction.
     isPublic: { type: Boolean, default: false, index: true },
+    // Lifecycle. A "draft" is owner-only, freely editable/deletable, and not on
+    // chain. Publishing flips it to "published" and kicks off deployment.
+    // Defaults to "published" so pre-existing auctions keep their behaviour.
+    status: {
+      type: String,
+      enum: ["draft", "published"],
+      default: "published",
+      index: true,
+    },
     // Optional close time.
     endsAt: { type: Date },
     // On-chain deployment (Base Sepolia). Absent until deployment succeeds.
     contractAddress: { type: String },
     deploymentTxHash: { type: String },
     chain: { type: String },
-    // pending = queued; deployed/failed = terminal.
+    // none = draft (not deployed); pending = queued; deployed/failed = terminal.
     deploymentStatus: {
       type: String,
-      enum: ["pending", "deployed", "failed"],
+      enum: ["none", "pending", "deployed", "failed"],
       default: "pending",
     },
     // Set once the worker has handled the bidding window closing (notified the

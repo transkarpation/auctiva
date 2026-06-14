@@ -1,87 +1,40 @@
 import { useState } from 'react';
 import {
   Alert,
-  Button,
   Card,
-  FileInput,
   Group,
   Loader,
-  NumberInput,
-  Pill,
+  Modal,
   SimpleGrid,
   Stack,
-  Switch,
   Text,
-  Textarea,
-  TextInput,
   Title,
 } from '@mantine/core';
-import { IconPhoto } from '@tabler/icons-react';
-import { useConnection } from 'wagmi';
-import { parseEther } from 'viem';
+import { formatEther } from 'viem';
 import { useAuctions } from '../../hooks/useAuctions';
-import { ConnectWalletButton } from '../wallet/ConnectWalletButton';
+import type { Auction } from '../../api/auctions';
 import { AuctionCard } from './AuctionCard';
+import { AuctionForm } from './AuctionForm';
 
-// Parses an ETH input into a wei value, or null if it isn't a valid amount.
-function ethToWei(input: number | string): bigint | null {
-  const s = typeof input === 'number' ? String(input) : input.trim();
-  if (s === '') return null;
-  try {
-    return parseEther(s);
-  } catch {
-    return null;
-  }
+// Converts an ISO timestamp into the value a datetime-local input expects
+// (local "YYYY-MM-DDTHH:mm").
+function toLocalDatetime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours(),
+  )}:${pad(d.getMinutes())}`;
 }
 
 export function MyAuctions() {
-  const { auctions, loading, error, busy, create, remove } = useAuctions();
-  const { address, isConnected } = useConnection();
+  const { auctions, loading, error, busy, create, update, publish, remove } = useAuctions();
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [startingPrice, setStartingPrice] = useState<number | string>('');
-  const [minIncrement, setMinIncrement] = useState<number | string>('');
-  const [endsAt, setEndsAt] = useState('');
-  const [isPublic, setIsPublic] = useState(false);
-  const [images, setImages] = useState<File[]>([]);
-
-  const priceWei = ethToWei(startingPrice);
-  const incrementWei = ethToWei(minIncrement);
-  const canSubmit =
-    title.trim() !== '' &&
-    priceWei !== null &&
-    incrementWei !== null &&
-    incrementWei > 0n &&
-    isConnected &&
-    Boolean(address);
-
-  const submit = () => {
-    if (!canSubmit || !address || priceWei === null || incrementWei === null) return;
-    void create(
-      {
-        title: title.trim(),
-        description: description.trim() || undefined,
-        startingPrice: priceWei.toString(),
-        minBidIncrement: incrementWei.toString(),
-        walletAddress: address,
-        isPublic,
-        endsAt: endsAt ? new Date(endsAt).toISOString() : undefined,
-      },
-      images,
-    ).then((created) => {
-      if (created) {
-        setTitle('');
-        setDescription('');
-        setStartingPrice('');
-        setMinIncrement('');
-        setEndsAt('');
-        setIsPublic(false);
-        setImages([]);
-        // Keep the wallet connected for subsequent auctions.
-      }
-    });
-  };
+  // Bumped after a successful create to reset the form (remount).
+  const [formKey, setFormKey] = useState(0);
+  // The draft currently open in the edit modal, if any.
+  const [editing, setEditing] = useState<Auction | null>(null);
 
   return (
     <Stack>
@@ -95,103 +48,20 @@ export function MyAuctions() {
 
       <Card withBorder radius="md" padding="lg">
         <Stack>
-          <Title order={4}>Create auction</Title>
-          <TextInput
-            label="Title"
-            placeholder="What are you auctioning?"
-            value={title}
-            onChange={(e) => setTitle(e.currentTarget.value)}
-            required
+          <Title order={4}>Create auction draft</Title>
+          <Text size="sm" c="dimmed">
+            Saved as a draft you can edit. Publish it when you're ready to deploy on chain.
+          </Text>
+          <AuctionForm
+            key={formKey}
+            submitLabel="Save draft"
+            busy={busy}
+            onSubmit={(data, images) =>
+              void create(data, images).then((created) => {
+                if (created) setFormKey((k) => k + 1);
+              })
+            }
           />
-          <Textarea
-            label="Description"
-            placeholder="Optional details"
-            value={description}
-            onChange={(e) => setDescription(e.currentTarget.value)}
-            autosize
-            minRows={2}
-          />
-          <FileInput
-            label="Images"
-            description="Optional — up to 8 images, uploaded when you create the auction"
-            placeholder="Select images"
-            leftSection={<IconPhoto size={16} />}
-            accept="image/*"
-            multiple
-            clearable
-            value={images}
-            onChange={(files) => setImages(files.slice(0, 8))}
-          />
-          {images.length > 0 && (
-            <Pill.Group>
-              {images.map((f, i) => (
-                <Pill
-                  key={`${f.name}-${i}`}
-                  withRemoveButton
-                  onRemove={() => setImages((prev) => prev.filter((_, j) => j !== i))}
-                >
-                  {f.name}
-                </Pill>
-              ))}
-            </Pill.Group>
-          )}
-          <Group grow>
-            <NumberInput
-              label="Starting price (ETH)"
-              description={
-                priceWei !== null ? `= ${priceWei.toString()} wei` : 'Minimum first bid'
-              }
-              placeholder="0.0"
-              value={startingPrice}
-              onChange={setStartingPrice}
-              min={0}
-              allowNegative={false}
-              decimalScale={18}
-              suffix=" ETH"
-              required
-            />
-            <NumberInput
-              label="Min bid increment (ETH)"
-              description={
-                incrementWei !== null
-                  ? `= ${incrementWei.toString()} wei`
-                  : 'Minimum raise per bid'
-              }
-              placeholder="0.0"
-              value={minIncrement}
-              onChange={setMinIncrement}
-              min={0}
-              allowNegative={false}
-              decimalScale={18}
-              suffix=" ETH"
-              required
-            />
-          </Group>
-          <TextInput
-            label="Ends at"
-            type="datetime-local"
-            value={endsAt}
-            onChange={(e) => setEndsAt(e.currentTarget.value)}
-          />
-          <Switch
-            label="Public — visible to everyone"
-            checked={isPublic}
-            onChange={(e) => setIsPublic(e.currentTarget.checked)}
-          />
-
-          {/* Wallet connection — the address is required to create an auction. */}
-          <ConnectWalletButton />
-          {!isConnected && (
-            <Text size="xs" c="dimmed">
-              Connect a wallet to create an auction.
-            </Text>
-          )}
-
-          <Group justify="flex-end">
-            <Button onClick={submit} loading={busy} disabled={!canSubmit}>
-              Create auction
-            </Button>
-          </Group>
         </Stack>
       </Card>
 
@@ -201,7 +71,7 @@ export function MyAuctions() {
         </Group>
       ) : auctions.length === 0 ? (
         <Text c="dimmed" ta="center" py="md">
-          You have no auctions yet — create your first one above.
+          You have no auctions yet — create your first draft above.
         </Text>
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
@@ -210,12 +80,42 @@ export function MyAuctions() {
               key={auction._id}
               auction={auction}
               isOwner
+              onEdit={() => setEditing(auction)}
+              onPublish={() => void publish(auction._id)}
               onDelete={() => void remove(auction._id)}
-              deleting={busy}
+              busy={busy}
             />
           ))}
         </SimpleGrid>
       )}
+
+      <Modal
+        opened={editing !== null}
+        onClose={() => setEditing(null)}
+        title="Edit draft"
+        size="lg"
+      >
+        {editing && (
+          <AuctionForm
+            submitLabel="Save changes"
+            busy={busy}
+            imageHint="Optional — selecting images replaces the current ones"
+            initial={{
+              title: editing.title,
+              description: editing.description,
+              startingPriceEth: formatEther(BigInt(editing.startingPrice)),
+              minIncrementEth: formatEther(BigInt(editing.minBidIncrement)),
+              endsAt: toLocalDatetime(editing.endsAt),
+              isPublic: editing.isPublic,
+            }}
+            onSubmit={(data, images) =>
+              void update(editing._id, data, images).then((updated) => {
+                if (updated) setEditing(null);
+              })
+            }
+          />
+        )}
+      </Modal>
     </Stack>
   );
 }

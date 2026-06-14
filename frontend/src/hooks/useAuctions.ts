@@ -97,11 +97,33 @@ export function useAuctions() {
       return created;
     });
 
+  // Edit a draft. Like create, optional `images` are uploaded first and replace
+  // the auction's images; omit them to leave existing images untouched.
+  const update = (id: string, data: Partial<NewAuction>, images?: File[]) =>
+    run(async () => {
+      let imageFileIds = data.imageFileIds;
+      if (images?.length) {
+        const uploaded = await Promise.all(images.map((f) => filesApi.upload(token, f)));
+        imageFileIds = uploaded.map((u) => u.id);
+      }
+      const updated = await auctionsApi.update(token, id, { ...data, imageFileIds });
+      setAuctions((prev) => prev.map((a) => (a._id === id ? updated : a)));
+      return updated;
+    });
+
+  // Publish a draft (triggers deployment; status flips to pending).
+  const publish = (id: string) =>
+    run(async () => {
+      const updated = await auctionsApi.publish(token, id);
+      setAuctions((prev) => prev.map((a) => (a._id === id ? updated : a)));
+      return updated;
+    });
+
   const remove = (id: string) =>
     run(async () => {
       await auctionsApi.remove(token, id);
       setAuctions((prev) => prev.filter((a) => a._id !== id));
     });
 
-  return { auctions, loading, error, busy, create, remove };
+  return { auctions, loading, error, busy, create, update, publish, remove };
 }
