@@ -42,6 +42,7 @@ import { PublicGroupPanel } from './components/discover/PublicGroupPanel';
 import { AuctionsNav } from './components/auctions/AuctionsNav';
 import { MyAuctions } from './components/auctions/MyAuctions';
 import { PublicAuctions } from './components/auctions/PublicAuctions';
+import { AuctionDetail } from './components/auctions/AuctionDetail';
 import { useGroups } from './hooks/useGroups';
 import { usePublicGroups } from './hooks/usePublicGroups';
 import { RealtimeMenu } from './components/realtime/RealtimeMenu';
@@ -168,6 +169,7 @@ function Dashboard() {
           />
           <Route path="/auctions" element={<MyAuctions />} />
           <Route path="/auctions/public" element={<PublicAuctions />} />
+          <Route path="/auctions/:id" element={<AuctionDetail />} />
           <Route path="*" element={<Navigate to="/tasks" replace />} />
         </Routes>
       </AppShell.Main>

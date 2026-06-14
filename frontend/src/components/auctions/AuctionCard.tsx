@@ -9,6 +9,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
+import { useNavigate } from 'react-router-dom';
 import { IconExternalLink, IconWallet } from '@tabler/icons-react';
 import { formatEther } from 'viem';
 import type { Auction } from '../../api/auctions';
@@ -76,13 +77,15 @@ type Props = {
 };
 
 export function AuctionCard({ auction, ownerName, isOwner, onDelete, deleting }: Props) {
+  const navigate = useNavigate();
   const ends = formatEndsAt(auction.endsAt);
   const images = auction.images ?? [];
+  const openDetail = () => navigate(`/auctions/${auction._id}`);
 
   return (
     <Card withBorder radius="md" padding="lg">
       {images.length > 0 && (
-        <Card.Section pos="relative">
+        <Card.Section pos="relative" style={{ cursor: 'pointer' }} onClick={openDetail}>
           <Image
             src={images[0].url}
             height={180}
@@ -100,7 +103,12 @@ export function AuctionCard({ auction, ownerName, isOwner, onDelete, deleting }:
 
       <Stack gap="xs" mt={images.length > 0 ? 'md' : undefined}>
         <Group justify="space-between" wrap="nowrap">
-          <Text fw={600} truncate>
+          <Text
+            fw={600}
+            truncate
+            style={{ cursor: 'pointer' }}
+            onClick={openDetail}
+          >
             {auction.title}
           </Text>
           <Group gap="xs" wrap="nowrap">

@@ -85,6 +85,14 @@ export const auctionsApi = {
   listPublic: (getToken: TokenGetter) =>
     request<PublicAuction[]>(getToken, '/auctions/public'),
 
+  // One auction (owner-only unless public), with owner name + live state.
+  get: (getToken: TokenGetter, id: string) =>
+    request<PublicAuction>(getToken, `/auctions/${id}`),
+
+  // Recorded bid history for one auction, newest first.
+  listBids: (getToken: TokenGetter, id: string) =>
+    request<Bid[]>(getToken, `/auctions/${id}/bids`),
+
   create: (getToken: TokenGetter, data: NewAuction) =>
     request<Auction>(getToken, '/auctions', {
       method: 'POST',

@@ -209,6 +209,62 @@ export async function getAuctionState(req: Request, res: Response): Promise<void
   }
 }
 
+// True when the requester may view this auction: its owner, or anyone if it's
+// public. Shared by the single-auction and bid-history endpoints.
+function canView(auction: { userId: string; isPublic: boolean }, userId: string): boolean {
+  return auction.userId === userId || auction.isPublic;
+}
+
+// Single auction detail. Visible to the owner, or to anyone when public.
+// Returns the auction plus owner name and live on-chain state (if deployed),
+// mirroring the shape of the public feed entries.
+export async function getAuction(req: Request, res: Response): Promise<void> {
+  if (!objectId.safeParse(req.params.id).success) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  const auction = await AuctionModel.findById(req.params.id).lean();
+  if (!auction || !canView(auction, userIdOf(req))) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const names = await resolveOwnerNames([auction.userId]);
+  const state =
+    auction.deploymentStatus === "deployed" && auction.contractAddress
+      ? await readAuctionState(auction.contractAddress).catch(() => null)
+      : null;
+
+  res.json({
+    ...auction,
+    ownerId: auction.userId,
+    ownerName: names.get(auction.userId) ?? "Unknown user",
+    state,
+  });
+}
+
+// Bid history for one auction (most recent first). Same visibility rules as the
+// auction itself.
+export async function listAuctionBids(req: Request, res: Response): Promise<void> {
+  if (!objectId.safeParse(req.params.id).success) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  const auction = await AuctionModel.findById(req.params.id).lean();
+  if (!auction || !canView(auction, userIdOf(req))) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+
+  const bids = await BidModel.find({ auctionId: auction._id })
+    .sort({ blockNumber: -1, createdAt: -1 })
+    .limit(200)
+    .lean();
+  res.json(bids);
+}
+
 const confirmBidSchema = z.object({
   transactionHash: z
     .string({ error: "transactionHash is required" })

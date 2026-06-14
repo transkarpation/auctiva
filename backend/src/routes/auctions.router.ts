@@ -5,16 +5,20 @@ import {
   listAuctions,
   createAuction,
   deleteAuction,
+  getAuction,
   getAuctionState,
+  listAuctionBids,
   confirmBid,
 } from "../controllers/auctions.controller.js";
 
 export const auctionsRouter = Router();
 
-// Declared before "/:id" routes (none are GET, but keep it explicit).
+// Specific paths before the generic "/:id" so they aren't captured by it.
 auctionsRouter.get("/public", asyncHandler(listPublicAuctions));
 auctionsRouter.get("/", asyncHandler(listAuctions));
 auctionsRouter.get("/:id/state", asyncHandler(getAuctionState));
+auctionsRouter.get("/:id/bids", asyncHandler(listAuctionBids));
+auctionsRouter.get("/:id", asyncHandler(getAuction));
 auctionsRouter.post("/", asyncHandler(createAuction));
 auctionsRouter.post("/:id/bids/confirm", asyncHandler(confirmBid));
 auctionsRouter.delete("/:id", asyncHandler(deleteAuction));
