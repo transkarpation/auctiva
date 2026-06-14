@@ -48,8 +48,12 @@ env vars are not fully set, every route returns `503`.
 - **Origin**: the S3 bucket, using **Origin Access Control (OAC)** (recommended
   over legacy OAI). Create an OAC and attach it to the origin.
 - **Viewer protocol policy**: Redirect HTTP→HTTPS (or HTTPS only).
-- **Restrict viewer access**: **Yes**, and select the **key group** from step 2.
-  This is what forces every request to carry a valid signature.
+- **Require signed access** on the cache behavior. In the current console this is
+  under the behavior's **Restrict viewer access** setting: choose **Yes**, set
+  trusted signer type to **Trusted key groups**, and add the **key group** from
+  step 2. (Older docs/console label this "Restrict viewer access: Yes"; the
+  underlying control is the trusted key group on the behavior.) This forces
+  every request to carry a valid signature.
 - Deploy and note the distribution domain (e.g. `d111111abcdef8.cloudfront.net`).
 
 ### 4. Bucket policy for OAC
