@@ -8,6 +8,7 @@ import { todosRouter } from "./todos.router.js";
 import { auctionsRouter } from "./auctions.router.js";
 import { notificationsRouter } from "./notifications.router.js";
 import { realtimeRouter } from "./realtime.router.js";
+import { filesRouter } from "./files.router.js";
 import { webhooksRouter } from "./webhooks.router.js";
 
 // Single entry point for the API: owns body parsing, auth, and all route mounts
@@ -41,3 +42,4 @@ apiRouter.use("/todos", requireUser, todosRouter);
 apiRouter.use("/auctions", requireUser, auctionsRouter);
 apiRouter.use("/notifications", requireUser, notificationsRouter);
 apiRouter.use("/realtime", requireUser, realtimeRouter);
+apiRouter.use("/files", requireUser, filesRouter);

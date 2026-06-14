@@ -42,6 +42,29 @@ const envSchema = z.object({
   // CENTRIFUGO_API_KEY must match CENTRIFUGO_HTTP_API_KEY in the container.
   CENTRIFUGO_API_URL: z.url().default("http://localhost:8000/api"),
   CENTRIFUGO_API_KEY: z.string().min(1).default("secret"),
+
+  // --- File storage (S3 + CloudFront signed URLs) -------------------------
+  // All optional: when storage is unconfigured the file routes return 503.
+  // AWS_ACCESS_KEY_ID/SECRET fall back to the default AWS credential chain
+  // (shared config, env, or instance role) when left blank.
+  AWS_REGION: z.string().min(1).optional(),
+  AWS_ACCESS_KEY_ID: z.string().min(1).optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  // Private S3 bucket uploads are stored in (Block Public Access on).
+  S3_BUCKET: z.string().min(1).optional(),
+  // Max accepted upload size in bytes (default 10 MiB).
+  UPLOAD_MAX_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  // CloudFront distribution domain fronting the bucket, e.g.
+  // "d111111abcdef8.cloudfront.net" (no scheme, no trailing slash).
+  CLOUDFRONT_DOMAIN: z.string().min(1).optional(),
+  // CloudFront public-key id used to sign URLs (e.g. "K2JCJMDEHXQW5F").
+  CLOUDFRONT_KEY_PAIR_ID: z.string().min(1).optional(),
+  // PEM private key matching that public key. Supports literal "\n" escapes so
+  // it can sit on a single .env line.
+  CLOUDFRONT_PRIVATE_KEY: z.string().min(1).optional(),
+  // Signed-URL lifetime in seconds. Minted once at upload time and stored with
+  // the file (default 7 days).
+  SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(7 * 24 * 60 * 60),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -74,7 +97,27 @@ export const env = {
   centrifugoTokenSecret: e.CENTRIFUGO_TOKEN_HMAC_SECRET,
   centrifugoApiUrl: e.CENTRIFUGO_API_URL,
   centrifugoApiKey: e.CENTRIFUGO_API_KEY,
+  awsRegion: e.AWS_REGION,
+  awsAccessKeyId: e.AWS_ACCESS_KEY_ID,
+  awsSecretAccessKey: e.AWS_SECRET_ACCESS_KEY,
+  s3Bucket: e.S3_BUCKET,
+  uploadMaxBytes: e.UPLOAD_MAX_BYTES,
+  cloudfrontDomain: e.CLOUDFRONT_DOMAIN,
+  cloudfrontKeyPairId: e.CLOUDFRONT_KEY_PAIR_ID,
+  // Restore newlines so a single-line .env value parses as a valid PEM.
+  cloudfrontPrivateKey: e.CLOUDFRONT_PRIVATE_KEY?.replace(/\\n/g, "\n"),
+  signedUrlTtlSeconds: e.SIGNED_URL_TTL_SECONDS,
 } as const;
+
+// True only when every piece needed to upload + sign is present. The file
+// routes check this and return 503 when storage isn't configured.
+export const fileStorageEnabled = Boolean(
+  env.awsRegion &&
+    env.s3Bucket &&
+    env.cloudfrontDomain &&
+    env.cloudfrontKeyPairId &&
+    env.cloudfrontPrivateKey
+);
 
 if (!env.clerkSecretKey) {
   console.warn(
