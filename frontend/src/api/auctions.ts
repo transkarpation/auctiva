@@ -1,9 +1,17 @@
 import { request, type TokenGetter } from './client';
 
+// An image attached to an auction. `url` is a CloudFront signed URL snapshot
+// the backend stored at upload time.
+export type AuctionImage = {
+  fileId: string;
+  url: string;
+};
+
 export type Auction = {
   _id: string;
   title: string;
   description: string;
+  images?: AuctionImage[];
   // Minimum first bid, in wei (decimal integer string). 1 ETH = 1e18 wei.
   startingPrice: string;
   // Minimum amount (wei) each later bid must exceed the current highest by.
@@ -65,6 +73,8 @@ export type NewAuction = {
   walletAddress: string;
   isPublic?: boolean;
   endsAt?: string;
+  // Ids of already-uploaded files (POST /files) to attach as images.
+  imageFileIds?: string[];
 };
 
 export const auctionsApi = {

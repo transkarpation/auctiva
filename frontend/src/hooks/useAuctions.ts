@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@clerk/react';
 import { auctionsApi, type Auction, type NewAuction } from '../api/auctions';
+import { filesApi } from '../api/files';
 import { useRealtime } from '../realtime/RealtimeProvider';
 
 // Loads and mutates the signed-in user's auctions.
@@ -81,9 +82,17 @@ export function useAuctions() {
     return () => clearInterval(id);
   }, [hasPending, load]);
 
-  const create = (data: NewAuction) =>
+  // Create an auction, optionally uploading `images` first (POST /files) and
+  // attaching the resulting file ids. Upload + create share one busy/error
+  // cycle, so a failed upload surfaces the same way and aborts the create.
+  const create = (data: NewAuction, images?: File[]) =>
     run(async () => {
-      const created = await auctionsApi.create(token, data);
+      let imageFileIds = data.imageFileIds;
+      if (images?.length) {
+        const uploaded = await Promise.all(images.map((f) => filesApi.upload(token, f)));
+        imageFileIds = uploaded.map((u) => u.id);
+      }
+      const created = await auctionsApi.create(token, { ...data, imageFileIds });
       setAuctions((prev) => [created, ...prev]);
       return created;
     });

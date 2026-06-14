@@ -2,9 +2,10 @@ import { type Request, type Response } from "express";
 import { z } from "zod";
 import { AuctionModel } from "../models/Auction.js";
 import { BidModel } from "../models/Bid.js";
+import { FileModel } from "../models/File.js";
 import { notifyNewBid } from "../lib/notifications.js";
 import { resolveOwnerNames } from "../lib/owners.js";
-import { parse } from "../lib/validate.js";
+import { parse, objectId } from "../lib/validate.js";
 import { env } from "../env.js";
 import { userIdOf } from "../lib/http.js";
 import {
@@ -37,6 +38,8 @@ const createAuctionSchema = z.object({
     .string()
     .regex(/^0x[a-fA-F0-9]{40}$/, "A valid wallet address is required")
     .transform((s) => s.toLowerCase()),
+  // Ids of the user's already-uploaded files (POST /files) to attach as images.
+  imageFileIds: z.array(objectId).max(8).optional(),
 });
 
 // Public feed: every authenticated user can browse public auctions, but only
@@ -89,6 +92,7 @@ export async function createAuction(req: Request, res: Response): Promise<void> 
   const data = parse(createAuctionSchema, req.body, res);
   if (!data) return;
   const userId = userIdOf(req);
+  const { imageFileIds, ...auctionData } = data;
 
   const biddingTimeSeconds = data.endsAt
     ? Math.max(
@@ -97,9 +101,22 @@ export async function createAuction(req: Request, res: Response): Promise<void> 
     )
     : DEFAULT_BIDDING_SECONDS;
 
+  // Resolve the attached files (only the user's own) and snapshot their signed
+  // URLs onto the auction. Preserves the order the client sent.
+  let images: { fileId: string; url: string }[] = [];
+  if (imageFileIds?.length) {
+    const files = await FileModel.find({ _id: { $in: imageFileIds }, userId });
+    const byId = new Map(files.map((f) => [f.id as string, f]));
+    images = imageFileIds.flatMap((id) => {
+      const f = byId.get(id);
+      return f ? [{ fileId: f.id, url: f.signedUrl }] : [];
+    });
+  }
+
   const auction = await AuctionModel.create({
     userId,
-    ...data,
+    ...auctionData,
+    images,
     chain: env.bcName,
     deploymentStatus: "pending",
   });

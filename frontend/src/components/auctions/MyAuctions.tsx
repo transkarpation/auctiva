@@ -3,9 +3,11 @@ import {
   Alert,
   Button,
   Card,
+  FileInput,
   Group,
   Loader,
   NumberInput,
+  Pill,
   SimpleGrid,
   Stack,
   Switch,
@@ -14,6 +16,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { IconPhoto } from '@tabler/icons-react';
 import { useConnection } from 'wagmi';
 import { parseEther } from 'viem';
 import { useAuctions } from '../../hooks/useAuctions';
@@ -41,6 +44,7 @@ export function MyAuctions() {
   const [minIncrement, setMinIncrement] = useState<number | string>('');
   const [endsAt, setEndsAt] = useState('');
   const [isPublic, setIsPublic] = useState(false);
+  const [images, setImages] = useState<File[]>([]);
 
   const priceWei = ethToWei(startingPrice);
   const incrementWei = ethToWei(minIncrement);
@@ -54,15 +58,18 @@ export function MyAuctions() {
 
   const submit = () => {
     if (!canSubmit || !address || priceWei === null || incrementWei === null) return;
-    void create({
-      title: title.trim(),
-      description: description.trim() || undefined,
-      startingPrice: priceWei.toString(),
-      minBidIncrement: incrementWei.toString(),
-      walletAddress: address,
-      isPublic,
-      endsAt: endsAt ? new Date(endsAt).toISOString() : undefined,
-    }).then((created) => {
+    void create(
+      {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        startingPrice: priceWei.toString(),
+        minBidIncrement: incrementWei.toString(),
+        walletAddress: address,
+        isPublic,
+        endsAt: endsAt ? new Date(endsAt).toISOString() : undefined,
+      },
+      images,
+    ).then((created) => {
       if (created) {
         setTitle('');
         setDescription('');
@@ -70,6 +77,7 @@ export function MyAuctions() {
         setMinIncrement('');
         setEndsAt('');
         setIsPublic(false);
+        setImages([]);
         // Keep the wallet connected for subsequent auctions.
       }
     });
@@ -103,6 +111,30 @@ export function MyAuctions() {
             autosize
             minRows={2}
           />
+          <FileInput
+            label="Images"
+            description="Optional — up to 8 images, uploaded when you create the auction"
+            placeholder="Select images"
+            leftSection={<IconPhoto size={16} />}
+            accept="image/*"
+            multiple
+            clearable
+            value={images}
+            onChange={(files) => setImages(files.slice(0, 8))}
+          />
+          {images.length > 0 && (
+            <Pill.Group>
+              {images.map((f, i) => (
+                <Pill
+                  key={`${f.name}-${i}`}
+                  withRemoveButton
+                  onRemove={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                >
+                  {f.name}
+                </Pill>
+              ))}
+            </Pill.Group>
+          )}
           <Group grow>
             <NumberInput
               label="Starting price (ETH)"

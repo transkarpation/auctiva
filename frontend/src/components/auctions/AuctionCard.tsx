@@ -1,4 +1,14 @@
-import { Anchor, Badge, Button, Card, Group, Loader, Stack, Text } from '@mantine/core';
+import {
+  Anchor,
+  Badge,
+  Button,
+  Card,
+  Group,
+  Image,
+  Loader,
+  Stack,
+  Text,
+} from '@mantine/core';
 import { IconExternalLink, IconWallet } from '@tabler/icons-react';
 import { formatEther } from 'viem';
 import type { Auction } from '../../api/auctions';
@@ -67,10 +77,28 @@ type Props = {
 
 export function AuctionCard({ auction, ownerName, isOwner, onDelete, deleting }: Props) {
   const ends = formatEndsAt(auction.endsAt);
+  const images = auction.images ?? [];
 
   return (
     <Card withBorder radius="md" padding="lg">
-      <Stack gap="xs">
+      {images.length > 0 && (
+        <Card.Section pos="relative">
+          <Image
+            src={images[0].url}
+            height={180}
+            fit="cover"
+            alt={auction.title}
+            fallbackSrc="https://placehold.co/600x400?text=Image+unavailable"
+          />
+          {images.length > 1 && (
+            <Badge color="dark" variant="filled" pos="absolute" bottom={8} right={8}>
+              +{images.length - 1}
+            </Badge>
+          )}
+        </Card.Section>
+      )}
+
+      <Stack gap="xs" mt={images.length > 0 ? 'md' : undefined}>
         <Group justify="space-between" wrap="nowrap">
           <Text fw={600} truncate>
             {auction.title}

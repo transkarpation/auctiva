@@ -27,6 +27,20 @@ const auctionSchema = new Schema(
     },
     // Seller's Ethereum wallet address (from MetaMask), stored lowercased.
     walletAddress: { type: String, required: true },
+    // Attached images. Each entry references an uploaded File and snapshots its
+    // CloudFront signed URL so the card can render without a second lookup.
+    images: {
+      type: [
+        new Schema(
+          {
+            fileId: { type: Schema.Types.ObjectId, ref: "File", required: true },
+            url: { type: String, required: true },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
     // When true, any authenticated user can see this auction.
     isPublic: { type: Boolean, default: false, index: true },
     // Optional close time.
